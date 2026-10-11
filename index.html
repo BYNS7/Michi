@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head><body>
+<title>Michi Araña</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@400;600;800&display=swap">
+<style>
+/* Layout: una azotea al atardecer arriba (el gatito cuelga de su hilo y habla), la conversación y los avisos debajo; en tablet horizontal, escena a la izquierda y chat a la derecha. */
+:root{
+  --sky-top:#bfe3f2; --sky-bot:#ffe2c2; --building:#6f83ad; --window:#fff3c4;
+  --bg:#f3f6fb; --paper:#ffffff; --ink:#1c2340; --muted:#5d6788; --line:#d5dcec;
+  --suit:#2b3a8f; --mask:#e8503a; --gold:#f2b632; --fur:#f29a4a; --fur-dark:#c96f25; --cream:#fff1dc;
+  --user:#2b3a8f; --user-ink:#ffffff;
+  --display:"Bangers","Impact","Arial Narrow",sans-serif;
+  --body:"Nunito",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --sky-top:#12173a; --sky-bot:#4a2f63; --building:#0b0f26; --window:#f2b632;
+  --bg:#0e1227; --paper:#1a2040; --ink:#eef1ff; --muted:#a3acd0; --line:#2e3764;
+  --suit:#3d51c4; --mask:#f0604a; --gold:#f5c350; --fur:#f29a4a; --fur-dark:#c96f25; --cream:#fff1dc;
+  --user:#3d51c4; --user-ink:#ffffff; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --sky-top:#12173a; --sky-bot:#4a2f63; --building:#0b0f26; --window:#f2b632;
+  --bg:#0e1227; --paper:#1a2040; --ink:#eef1ff; --muted:#a3acd0; --line:#2e3764;
+  --suit:#3d51c4; --mask:#f0604a; --gold:#f5c350; --fur:#f29a4a; --fur-dark:#c96f25; --cream:#fff1dc;
+  --user:#3d51c4; --user-ink:#ffffff; color-scheme:dark }
+
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45}
+*{box-sizing:border-box}
+.app{height:100%;max-width:1100px;margin:0 auto;padding-inline:16px;padding-block:12px;display:grid;gap:12px;grid-template-rows:auto minmax(0,1fr)}
+@media (min-width:820px){ .app{grid-template-rows:minmax(0,1fr);grid-template-columns:minmax(0,5fr) minmax(0,6fr)} }
+
+/* Escena */
+.stage{position:relative;border-radius:20px;overflow:hidden;background:linear-gradient(var(--sky-top),var(--sky-bot));min-height:250px;display:flex;flex-direction:column}
+.stage h1{font-family:var(--display);font-weight:400;font-size:1.9rem;letter-spacing:.04em;margin:0;padding:12px 16px 0;color:var(--ink);position:relative;z-index:2}
+.stage h1 small{display:block;font-family:var(--body);font-size:.8rem;font-weight:600;letter-spacing:0;color:var(--muted)}
+.skyline{position:absolute;inset:auto 0 0 0;width:100%;height:45%}
+.skyline rect.b{fill:var(--building)} .skyline rect.w{fill:var(--window);opacity:.85}
+.scene{position:relative;z-index:1;flex:1;display:flex;align-items:flex-start;gap:8px;padding:0 12px 12px;min-height:0}
+#cat{flex:0 0 auto;width:min(46%,230px);aspect-ratio:3/4;cursor:pointer;background:none;border:0;padding:0;margin-top:-4px}
+#cat:focus-visible{outline:3px solid var(--gold);outline-offset:2px;border-radius:12px}
+#cat canvas{display:block;width:100%;height:100%}
+.bubble{flex:1;min-width:0;margin-top:26px;background:var(--paper);color:var(--ink);border:2px solid var(--ink);border-radius:18px 18px 18px 4px;padding:10px 14px;font-weight:600;max-height:11.5em;overflow:auto}
+@media (min-width:820px){ .scene{flex-direction:column;align-items:center} #cat{width:min(70%,300px)} .bubble{margin-top:0;width:100%;flex:0 1 auto;border-radius:18px} }
+
+/* Panel */
+.panel{display:flex;flex-direction:column;gap:10px;min-height:0}
+.avisos{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.9rem;color:var(--muted)}
+.aviso{display:inline-flex;align-items:center;gap:8px;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 12px;color:var(--ink);font-weight:600;max-width:100%}
+.aviso span{min-width:0;overflow-wrap:anywhere}
+.aviso time{font-variant-numeric:tabular-nums;color:var(--mask);font-weight:800}
+.aviso button{border:0;background:var(--line);color:var(--ink);border-radius:50%;width:26px;height:26px;font-size:1rem;line-height:1;cursor:pointer}
+.log{flex:1;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:12px;background:var(--paper);border:1px solid var(--line);border-radius:16px}
+.m{max-width:85%;padding:8px 12px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.m.cat{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.m.me{align-self:flex-end;background:var(--user);color:var(--user-ink)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chips b{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.chips button[aria-pressed="true"]{background:var(--mask);border-color:var(--mask);color:#fff}
+.chips button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chips button:hover{border-color:var(--mask)}
+form{display:flex;gap:8px;flex-wrap:wrap}
+.btn{min-height:46px}
+#msg{flex:1 1 220px;min-width:0;font:inherit;padding:12px 14px;border-radius:14px;border:2px solid var(--line);background:var(--paper);color:var(--ink)}
+#msg:focus{outline:none;border-color:var(--suit)}
+.btn{font-family:var(--display);font-size:1.15rem;letter-spacing:.05em;border:0;border-radius:14px;padding:0 18px;background:var(--mask);color:#fff;cursor:pointer}
+.btn.ghost{font-family:var(--body);font-size:.9rem;font-weight:800;letter-spacing:0;background:var(--paper);color:var(--ink);border:2px solid var(--line);padding:0 12px}
+.btn.ghost[aria-pressed="true"]{border-color:var(--gold)}
+button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+</style>
+
+<div class="app">
+  <section class="stage" aria-label="Michi Araña">
+    <h1>Michi Araña <small id="estado">Toca «Mic» y di «Oye Michi»</small></h1>
+    <svg class="skyline" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true">
+      <rect class="b" x="0" y="50" width="60" height="70"/><rect class="b" x="66" y="20" width="48" height="100"/>
+      <rect class="b" x="120" y="64" width="70" height="56"/><rect class="b" x="196" y="36" width="44" height="84"/>
+      <rect class="b" x="246" y="72" width="64" height="48"/><rect class="b" x="316" y="12" width="40" height="108"/>
+      <rect class="b" x="360" y="56" width="40" height="64"/>
+      <rect class="w" x="12" y="62" width="8" height="10"/><rect class="w" x="36" y="80" width="8" height="10"/>
+      <rect class="w" x="76" y="34" width="8" height="10"/><rect class="w" x="94" y="60" width="8" height="10"/>
+      <rect class="w" x="134" y="78" width="8" height="10"/><rect class="w" x="166" y="92" width="8" height="10"/>
+      <rect class="w" x="206" y="50" width="8" height="10"/><rect class="w" x="222" y="82" width="8" height="10"/>
+      <rect class="w" x="262" y="86" width="8" height="10"/><rect class="w" x="326" y="28" width="8" height="10"/>
+      <rect class="w" x="338" y="66" width="8" height="10"/><rect class="w" x="372" y="72" width="8" height="10"/>
+    </svg>
+    <div class="scene">
+      <button id="cat" type="button" aria-label="Saludar a Michi">
+        <canvas id="c3d" role="img" aria-label="Gatito negro en 3D con chaqueta verde, antifaz rojo y zapatillas"></canvas>
+      </button>
+      <div class="bubble" id="bubble" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="avisos" id="avisos"></div>
+    <div class="log" id="log"></div>
+    <div class="chips" id="poses"><b>Poses</b>
+      <button type="button" data-p="saludo">Saludo</button>
+      <button type="button" data-p="agachado">Agachado</button>
+      <button type="button" data-p="aterrizaje">Aterrizaje</button>
+      <button type="button" data-p="balanceo">Balanceo</button>
+      <button type="button" data-p="colgado">Cabeza abajo</button>
+      <button type="button" data-p="salto">Salto</button>
+    </div>
+    <div class="chips" id="chips">
+      <button type="button" data-q="¿Qué hora es?">¿Qué hora es?</button>
+      <button type="button" data-q="Temporizador de 5 minutos">Temporizador 5 min</button>
+      <button type="button" data-q="Recuérdame tomar agua en 30 minutos">Recordar tomar agua</button>
+      <button type="button" data-q="Cuéntame un chiste">Un chiste</button>
+    </div>
+    <form id="form" autocomplete="off">
+      <input id="msg" type="text" placeholder="Escríbele o díctale: «ponte agachado», «¿qué hora es?»…" aria-label="Mensaje para Michi" enterkeyhint="send">
+      <button class="btn ghost" id="mic" type="button" aria-pressed="false">Mic: no</button>
+      <button class="btn ghost" id="voz" type="button" aria-pressed="true">Voz: sí</button>
+      <button class="btn" type="submit">Enviar</button>
+    </form>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var cat = $("cat"), bubble = $("bubble"), log = $("log"), avisosEl = $("avisos");
+  var history = [], avisos = [], voiceOn = true, audioCtx = null, busy = false;
+
+  function load(k, d){ try{ var v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } }
+  function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+  avisos = load("michi.avisos", []);
+  voiceOn = load("michi.voz", true);
+
+  /* ---------- gatito 3D ---------- */
+  var mood = {}, poseName = "idle", tempPose = null, flashT = 0;
+  var POSES = {
+    idle:{y:1.0, aP:[0,0,0.35], eP:-0.3, aM:[0,0,0.35], eM:-0.3, lP:[0,0,0.08], lM:[0,0,0.08]},
+    saludo:{y:1.0, rz:-0.1, aP:[0,0,2.6], eP:-0.4, aM:[0.3,0,0.6], eM:-0.6, lP:[0,0,0.1], lM:[0.5,0,0.25], kM:1.0, head:[0,0,0.12]},
+    agachado:{y:0.5, torso:[0.3,0,0], head:[-0.25,0.3,0], aP:[-0.5,0,0.1], eP:-0.1, aM:[0.9,0,1.2], eM:-0.5, lP:[-1.9,0,0.9], kP:2.3, lM:[-1.9,0,0.9], kM:2.3},
+    aterrizaje:{y:0.62, torso:[0.35,0,0], head:[-0.2,0,0], aP:[-0.3,0,0.1], aM:[0.7,0,1.9], eM:-0.2, lP:[-1.5,0,0.3], kP:1.6, lM:[0.2,0,0.2], kM:1.5},
+    colgado:{hang:2.2, flip:1, amp:0.12, aP:[0,0,0.9], eP:-1.3, aM:[0,0,0.9], eM:-1.3, lP:[-1.3,0,0.8], kP:2.0, lM:[-1.3,0,0.8], kM:2.0},
+    balanceo:{hang:2.0, amp:0.45, aP:[0,0,2.95], aM:[0.4,0,1.1], eM:-0.4, lP:[-0.9,0,0.2], kP:1.2, lM:[0.6,0,0.1], kM:0.7},
+    salto:{y:1.0, aP:[0,0,2.2], aM:[0,0,2.2], lP:[-0.4,0,0.7], kP:1.2, lM:[0.5,0,0.5], kM:0.8}
+  };
+  var POSE_NAMES = {saludo:"saludo", agachado:"agachado", aterrizaje:"aterrizaje de héroe", balanceo:"balanceo", colgado:"cabeza abajo", salto:"salto"};
+  function setMood(c, on){ mood[c] = on; }
+  function flash(c, ms){ tempPose = c === "party" ? "salto" : "saludo"; clearTimeout(flashT); flashT = setTimeout(function(){ tempPose = null; }, ms); }
+  function setPose(n){
+    poseName = POSES[n] ? n : "idle"; tempPose = null;
+    document.querySelectorAll("#poses button").forEach(function(b){ b.setAttribute("aria-pressed", b.dataset.p === poseName); });
+  }
+  window.__pose = setPose;
+  function full(p){
+    var d = {x:0,y:1,rz:0,torso:[0,0,0],head:[0,0,0],aP:[0,0,0],eP:0,aM:[0,0,0],eM:0,lP:[0,0,0],kP:0,lM:[0,0,0],kM:0};
+    for (var k in p) if (k in d) d[k] = Array.isArray(p[k]) ? p[k].slice() : p[k];
+    return d;
+  }
+  (function build(){
+    var T = window.THREE, canvas = $("c3d"); if (!T || !canvas) return;
+    var renderer;
+    try{ renderer = new T.WebGLRenderer({canvas: canvas, alpha: true, antialias: true}); }catch(e){ return; }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    var scene = new T.Scene(), cam = new T.PerspectiveCamera(35, 0.75, 0.1, 50);
+    cam.position.set(0, 1.7, 7.6); cam.lookAt(0, 1.7, 0);
+    scene.add(new T.HemisphereLight(0xffffff, 0x554466, 1.05));
+    var sun = new T.DirectionalLight(0xffffff, 0.7); sun.position.set(2, 4, 5); scene.add(sun);
+    var M = function(c){ return new T.MeshLambertMaterial({color: c}); };
+    var fur = M(0x2a2a35), jacket = M(0x6f8a4a), pants = M(0x4f6636), red = M(0xe8503a), white = M(0xf7f3ea), gold = M(0xf5c350), dark = M(0x15151c), pink = M(0xe27a92);
+    function ball(r, mat, sx, sy, sz){ var m = new T.Mesh(new T.SphereGeometry(r, 24, 18), mat); m.scale.set(sx || 1, sy || 1, sz || 1); return m; }
+    function seg(len, r, mat){ var g = new T.CylinderGeometry(r, r, len, 14); g.translate(0, -len / 2, 0); var m = new T.Mesh(g, mat); var e = ball(r, mat); e.position.y = -len; m.add(e); m.add(ball(r, mat)); return m; }
+    function joint(parent, x, y, z){ var g = new T.Group(); g.position.set(x, y, z); parent.add(g); return g; }
+    function at(m, x, y, z){ m.position.set(x, y, z); return m; }
+
+    var root = new T.Group(); scene.add(root);
+    var torsoJ = joint(root, 0, 0, 0);
+    torsoJ.add(ball(0.42, jacket, 1, 1.1, 0.9));
+    torsoJ.add(at(ball(0.4, pants, 1, 0.5, 0.88), 0, -0.3, 0));
+    var scarf = new T.Mesh(new T.TorusGeometry(0.27, 0.1, 10, 24), red); scarf.rotation.x = Math.PI / 2; scarf.position.y = 0.42; torsoJ.add(scarf);
+    torsoJ.add(at(ball(0.11, red, 1, 1.6, 0.6), 0.12, 0.25, 0.3));
+    var headJ = joint(torsoJ, 0, 0.5, 0), H = 0.52;
+    headJ.add(at(ball(0.62, fur), 0, H, 0));
+    headJ.add(at(ball(0.635, red, 1, 0.34, 1), 0, H + 0.06, 0));
+    var eyes = [], mouth;
+    [1, -1].forEach(function(s){
+      var ear = new T.Mesh(new T.ConeGeometry(0.24, 0.46, 4), fur); ear.position.set(s * 0.38, H + 0.56, 0); ear.rotation.set(0, Math.PI / 4, -s * 0.35); headJ.add(ear);
+      var inn = new T.Mesh(new T.ConeGeometry(0.14, 0.3, 4), red); inn.position.set(s * 0.37, H + 0.53, 0.07); inn.rotation.set(0, Math.PI / 4, -s * 0.35); headJ.add(inn);
+      var eye = at(ball(0.17, gold, 1, 1.15, 0.5), s * 0.25, H + 0.07, 0.55); headJ.add(eye); eyes.push(eye);
+      eye.add(at(ball(0.07, dark, 0.7, 1.3, 0.6), 0, 0, 0.14));
+      headJ.add(at(ball(0.1, white, 1.3, 0.9, 0.7), s * 0.1, H - 0.2, 0.56));
+    });
+    headJ.add(at(ball(0.05, pink), 0, H - 0.12, 0.62));
+    mouth = at(ball(0.06, pink, 1, 0.3, 0.6), 0, H - 0.3, 0.55); headJ.add(mouth);
+
+    var J = {};
+    [["P", 1], ["M", -1]].forEach(function(v){
+      var n = v[0], s = v[1];
+      var sh = joint(torsoJ, s * 0.4, 0.26, 0); sh.add(seg(0.3, 0.115, jacket));
+      var el = joint(sh, 0, -0.3, 0); el.add(seg(0.24, 0.105, jacket));
+      el.add(at(ball(0.15, fur), 0, -0.32, 0)); el.add(at(ball(0.07, red, 1, 1, 0.6), 0, -0.34, 0.11));
+      var hp = joint(root, s * 0.2, -0.32, 0); hp.add(seg(0.3, 0.14, pants));
+      var kn = joint(hp, 0, -0.3, 0); kn.add(seg(0.26, 0.12, pants));
+      kn.add(at(ball(0.17, white, 1, 0.75, 1.5), 0, -0.34, 0.09)); kn.add(at(ball(0.11, red, 1.1, 0.8, 1), 0, -0.36, 0.27));
+      J["a" + n] = sh; J["e" + n] = el; J["l" + n] = hp; J["k" + n] = kn; J["s" + n] = s;
+    });
+    var tail = [], tp = joint(root, 0, -0.3, -0.3);
+    for (var i = 0; i < 4; i++){ tp.add(seg(0.26, 0.075 - i * 0.008, fur)); tail.push(tp); if (i < 3) tp = joint(tp, 0, -0.26, 0); }
+    var PIV = 4.4, thG = new T.CylinderGeometry(0.018, 0.018, 1, 6); thG.translate(0, -0.5, 0);
+    var thread = new T.Mesh(thG, new T.MeshBasicMaterial({color: 0xffffff})); thread.position.set(0, PIV, -0.05); scene.add(thread);
+    var shadow = new T.Mesh(new T.CircleGeometry(0.7, 32), new T.MeshBasicMaterial({color: 0x000000, transparent: true, opacity: 0.22}));
+    shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.01; scene.add(shadow);
+
+    function size(){ var w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+    size(); if (window.ResizeObserver) new ResizeObserver(size).observe(canvas); else window.addEventListener("resize", size);
+
+    var calm = false; try{ calm = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+    var cur = full(POSES.idle), last = performance.now();
+    function mix(a, b, k){ return a + (b - a) * k; }
+    function frame(now){
+      requestAnimationFrame(frame);
+      var dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+      var name = tempPose || poseName, p = POSES[name], g = full(p), w = calm ? 0 : 1;
+      if (p.hang){
+        var ang = w * p.amp * Math.sin(t * 1.7);
+        g.x = Math.sin(ang) * p.hang; g.y = PIV - Math.cos(ang) * p.hang; g.rz = ang + (p.flip ? Math.PI : 0);
+      }
+      if (name === "saludo") g.aP[2] += w * Math.sin(t * 9) * 0.25;
+      if (name === "salto") g.y = 1.0 + w * Math.abs(Math.sin(t * 3.2)) * 0.9;
+      if (name === "idle") g.y += w * Math.sin(t * 2) * 0.02;
+      if (mood.thinking){ g.head[2] += 0.28; g.head[0] -= 0.12; }
+      var k = 1 - Math.exp(-dt * 8);
+      for (var key in g){
+        if (Array.isArray(g[key])) for (var n = 0; n < 3; n++) cur[key][n] = mix(cur[key][n], g[key][n], k);
+        else cur[key] = mix(cur[key], g[key], k);
+      }
+      root.position.set(cur.x, cur.y, 0); root.rotation.z = cur.rz;
+      torsoJ.rotation.set(cur.torso[0], cur.torso[1], cur.torso[2]);
+      headJ.rotation.set(cur.head[0], cur.head[1], cur.head[2]);
+      ["P", "M"].forEach(function(n){
+        var s = J["s" + n], a = cur["a" + n], l = cur["l" + n];
+        J["a" + n].rotation.set(a[0], a[1] * s, a[2] * s); J["e" + n].rotation.x = cur["e" + n];
+        J["l" + n].rotation.set(l[0], l[1] * s, l[2] * s); J["k" + n].rotation.x = cur["k" + n];
+      });
+      var wag = Math.sin(t * (mood.thinking ? 9 : 2.4)) * 0.25 * w;
+      tail[0].rotation.set(2.1, 0, wag); tail[1].rotation.set(0.45, 0, wag); tail[2].rotation.set(0.5, 0, wag); tail[3].rotation.set(0.5, 0, wag);
+      var blink = (t % 4.5 > 4.36) ? 0.1 : 1.15; eyes[0].scale.y = eyes[1].scale.y = blink;
+      mouth.scale.y = mood.talking ? 0.5 + Math.abs(Math.sin(t * 11)) * 1.1 : 0.3;
+      var dx = cur.x, dy = PIV - cur.y;
+      thread.visible = !!p.hang; thread.rotation.z = Math.atan2(dx, dy); thread.scale.y = Math.sqrt(dx * dx + dy * dy);
+      var sc = Math.max(0.35, 1.15 - cur.y * 0.28); shadow.position.x = cur.x; shadow.scale.set(sc, sc, sc);
+      renderer.render(scene, cam);
+    }
+    requestAnimationFrame(frame);
+  })();
+
+  function addMsg(who, text){
+    var d = document.createElement("div");
+    d.className = "m " + who; d.textContent = text;
+    log.appendChild(d); log.scrollTop = log.scrollHeight;
+    return d;
+  }
+
+  function speak(text){
+    var done = function(){ setMood("talking", false); setTimeout(function(){ mute = false; }, 500); };
+    setMood("talking", true); mute = true;
+    var ok = false;
+    if (voiceOn){
+      try{
+        var s = window.speechSynthesis;
+        if (s && window.SpeechSynthesisUtterance){
+          s.cancel();
+          var u = new SpeechSynthesisUtterance(text);
+          var v = s.getVoices().filter(function(x){ return /^es/i.test(x.lang); })[0];
+          if (v) u.voice = v;
+          u.lang = v ? v.lang : "es-ES"; u.pitch = 1.4; u.rate = 1.05;
+          u.onend = done; u.onerror = done;
+          s.speak(u); ok = true;
+        }
+      }catch(e){}
+    }
+    setTimeout(done, ok ? Math.min(20000, 1500 + text.length * 90) : Math.min(6000, 600 + text.length * 45));
+  }
+
+  function say(text){
+    addMsg("cat", text); bubble.textContent = text; speak(text);
+  }
+
+  function beep(){
+    try{
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      [0, .25, .5].forEach(function(t, i){
+        var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.frequency.value = 880 + i * 220; o.connect(g); g.connect(audioCtx.destination);
+        g.gain.setValueAtTime(.2, audioCtx.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + t + .2);
+        o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + .22);
+      });
+    }catch(e){}
+  }
+  function unlockAudio(){ try{ audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === "suspended") audioCtx.resume(); }catch(e){} }
+
+  /* ---------- tiempo ---------- */
+  function hhmm(d){ return d.toLocaleTimeString("es", {hour:"2-digit", minute:"2-digit"}); }
+  function fmtDur(ms){
+    var s = Math.round(ms / 1000);
+    if (s < 60) return s + (s === 1 ? " segundo" : " segundos");
+    var m = Math.round(s / 60);
+    if (m < 60) return m + (m === 1 ? " minuto" : " minutos");
+    var h = Math.floor(m / 60), r = m % 60;
+    return h + " h" + (r ? " " + r + " min" : "");
+  }
+  function left(ms){
+    var s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    var p = function(n){ return (n < 10 ? "0" : "") + n; };
+    return (h ? h + ":" + p(m) : m) + ":" + p(x);
+  }
+  function norm(t){ return t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+  function parseDur(t){
+    t = t.replace(/\bmedia hora\b/g, "30 minutos").replace(/\b(un|una)\b/g, "1");
+    var re = /(\d+(?:[.,]\d+)?)\s*(segundos?|seg|minutos?|min|horas?|hrs?|h|m|s)\b/g, m, total = 0;
+    while ((m = re.exec(t))){
+      var n = parseFloat(m[1].replace(",", ".")), u = m[2][0];
+      total += n * (u === "h" ? 3600000 : u === "m" ? 60000 : 1000);
+    }
+    return total;
+  }
+  function parseClock(t){
+    var m = /\ba la?s? (\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|de la manana|de la tarde|de la noche)?/.exec(t);
+    if (!m) return 0;
+    var h = +m[1], mi = +(m[2] || 0), suf = m[3] || "";
+    if (h > 23 || mi > 59) return 0;
+    if (/pm|p\.m|tarde|noche/.test(suf) && h < 12) h += 12;
+    if (/am|a\.m|manana/.test(suf) && h === 12) h = 0;
+    var d = new Date(); d.setHours(h, mi, 0, 0);
+    if (d <= Date.now() && !suf && h < 12){ d.setHours(h + 12); }
+    if (d <= Date.now()) d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }
+
+  /* ---------- avisos ---------- */
+  function addAviso(label, at){
+    avisos.push({id: Date.now() + "" + Math.random().toString(36).slice(2, 6), label: label, at: at});
+    save("michi.avisos", avisos); renderAvisos();
+  }
+  function renderAvisos(){
+    avisosEl.textContent = "";
+    if (!avisos.length){ avisosEl.textContent = "Sin avisos activos. Pídele un temporizador o un recordatorio."; return; }
+    avisos.slice().sort(function(a, b){ return a.at - b.at; }).forEach(function(a){
+      var w = document.createElement("div"); w.className = "aviso";
+      var s = document.createElement("span"); s.textContent = a.label;
+      var t = document.createElement("time"); t.dataset.at = a.at;
+      var b = document.createElement("button"); b.type = "button"; b.textContent = "×";
+      b.dataset.id = a.id; b.setAttribute("aria-label", "Cancelar " + a.label);
+      w.appendChild(s); w.appendChild(t); w.appendChild(b); avisosEl.appendChild(w);
+    });
+    tickLabels();
+  }
+  function tickLabels(){
+    var now = Date.now();
+    avisosEl.querySelectorAll("time").forEach(function(t){
+      var ms = +t.dataset.at - now;
+      t.textContent = ms < 3600000 ? left(ms) : hhmm(new Date(+t.dataset.at));
+    });
+  }
+  avisosEl.addEventListener("click", function(e){
+    var id = e.target.dataset && e.target.dataset.id; if (!id) return;
+    avisos = avisos.filter(function(a){ return a.id !== id; });
+    save("michi.avisos", avisos); renderAvisos();
+  });
+  setInterval(function(){
+    var now = Date.now(), due = avisos.filter(function(a){ return a.at <= now; });
+    if (due.length){
+      avisos = avisos.filter(function(a){ return a.at > now; });
+      save("michi.avisos", avisos); renderAvisos();
+      beep(); flash("party", 4000);
+      say("¡Miau, miau! Ya es hora: " + due.map(function(a){ return a.label; }).join(" y ") + ".");
+    } else tickLabels();
+  }, 500);
+
+  /* ---------- respuestas propias ---------- */
+  var CHISTES = ["¿Qué hace un gato en la computadora? Busca el ratón.", "¿Cuál es el colmo de un gato héroe? Salvar la ciudad y que nadie le abra la lata.", "¿Por qué el gato no usa el ascensor? Porque siempre cae de pie."];
+  function askClaude(text){
+    var t = norm(text);
+    if (/\b(hola|buenas|buenos dias|que tal)\b/.test(t)){ flash("wave", 1500); return say("¡Miau, hola! ¿En qué te ayudo?"); }
+    if (/gracias/.test(t)) return say("¡De nada! Para eso están los héroes gatunos.");
+    if (/chiste/.test(t)) return say(CHISTES[Math.floor(Math.random() * CHISTES.length)]);
+    if (/quien eres|como te llamas|tu nombre/.test(t)) return say("Soy Michi Araña, tu asistente gatuno de azotea.");
+    return say("Eso todavía no lo sé. Puedo decirte la hora y la fecha, poner temporizadores y recordatorios, contar un chiste y hacer poses.");
+  }
+
+  /* ---------- voz ---------- */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition, rec = null, micOn = false, awakeUntil = 0, mute = false, mic = $("mic");
+  function setEstado(t){ $("estado").textContent = t; }
+  function paintMic(){
+    mic.setAttribute("aria-pressed", micOn); mic.textContent = micOn ? "Mic: sí" : "Mic: no";
+    setEstado(micOn ? "Escuchando: di «Oye Michi» y tu orden" : "Toca «Mic» y di «Oye Michi»");
+  }
+  function heard(raw){
+    raw = (raw || "").trim(); if (!raw) return;
+    var m = /\b(michi|mishi|michy|mitchi|miche|michu|mi chi)\b[\s,.!¡¿]*(.*)$/i.exec(raw);
+    if (m){
+      var cmd = m[2].replace(/^ara[ñn]a\b[\s,.!¡¿]*/i, "").trim();
+      if (cmd){ awakeUntil = 0; send(cmd); }
+      else { awakeUntil = Date.now() + 9000; flash("wave", 1500); say("¿Sí? Te escucho."); }
+    } else if (Date.now() < awakeUntil){ awakeUntil = 0; send(raw); }
+  }
+  function startRec(){
+    try{ rec = new SR(); }catch(e){ return; }
+    rec.lang = /^es/i.test(navigator.language || "") ? navigator.language : "es-BO";
+    rec.continuous = true; rec.interimResults = false;
+    rec.onresult = function(e){
+      if (mute) return;
+      for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) heard(e.results[i][0].transcript);
+    };
+    rec.onerror = function(e){
+      if (e.error === "not-allowed" || e.error === "service-not-allowed"){
+        micOn = false; paintMic(); setEstado("Micrófono bloqueado: permítelo para esta página en Chrome");
+      }
+    };
+    rec.onend = function(){ if (micOn) setTimeout(function(){ try{ rec.start(); }catch(e){} }, 300); };
+    try{ rec.start(); }catch(e){}
+  }
+  mic.addEventListener("click", function(){
+    if (!SR){ say("Este navegador no reconoce la voz. Ábreme en Chrome."); return; }
+    micOn = !micOn; unlockAudio();
+    if (micOn){
+      startRec();
+      try{ if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(function(){}); }catch(e){}
+    } else { try{ rec && rec.stop(); }catch(e){} }
+    paintMic();
+  });
+
+  function handle(text){
+    var t = norm(text), now = new Date();
+    if (/\b(que hora|hora es|dime la hora)\b/.test(t)){
+      return say("Son las " + hhmm(now) + ".");
+    }
+    if (/\b(que dia|que fecha|fecha de hoy)\b/.test(t)){
+      return say("Hoy es " + now.toLocaleDateString("es", {weekday:"long", day:"numeric", month:"long", year:"numeric"}) + ".");
+    }
+    if (/\b(clima|tiempo hace|temperatura|va a llover|pronostico)\b/.test(t)){
+      return say("Desde esta azotea no puedo consultar el clima, miau.");
+    }
+    var pm = /agach|cuclillas/.test(t) ? "agachado" : /aterriz/.test(t) ? "aterrizaje" : /cabeza abajo|boca abajo|cuelga|colgad/.test(t) ? "colgado"
+      : /balance|columpi/.test(t) ? "balanceo" : /\bsalt/.test(t) ? "salto" : /\bsalud/.test(t) ? "saludo" : "";
+    if (pm && /\b(pose|posa|ponte|haz|muestra|agachate|aterriza|cuelgate|balanceate|columpiate|salta|saluda)\b/.test(t)){
+      setPose(pm); return say("¡Miau! Pose de " + POSE_NAMES[pm] + ".");
+    }
+    var isTimer = /\b(temporizador|cronometro|cuenta regresiva|timer)\b/.test(t);
+    var isRem = /\b(recuerdame|recordatorio|avisame|recordar|alarma)\b/.test(t);
+    if (isTimer || isRem){
+      var dur = parseDur(t), at = dur ? Date.now() + dur : parseClock(t);
+      if (!at){
+        return say(isTimer ? "¿De cuánto tiempo? Por ejemplo: temporizador de 10 minutos."
+                           : "¿Cuándo te aviso? Por ejemplo: recuérdame tomar agua en 20 minutos, o a las 5 de la tarde.");
+      }
+      var label;
+      if (isTimer && !isRem) label = "Temporizador de " + fmtDur(dur || at - Date.now());
+      else {
+        label = text.replace(/^\s*(por favor,?\s*)?(recu[eé]rdame|av[ií]same|recordatorio|recordar|alarma)( de| para| que)?\s*/i, "")
+          .replace(/\s*\b(en|dentro de)\s+(un|una|media|\d).*$/i, "").replace(/\s*\ba la?s? \d.*$/i, "").trim();
+        label = label ? label.charAt(0).toUpperCase() + label.slice(1) : "Recordatorio";
+      }
+      addAviso(label, at); flash("wave", 1800);
+      return say("¡Hecho! " + label + (dur ? ": te aviso en " + fmtDur(dur) : ": te aviso a las " + hhmm(new Date(at))) + ". Deja esta página abierta para que pueda maullarte.");
+    }
+    return askClaude(text);
+  }
+
+  function send(text){
+    text = (text || "").trim();
+    if (!text || busy) return;
+    unlockAudio();
+    addMsg("me", text);
+    handle(text);
+  }
+
+  $("form").addEventListener("submit", function(e){ e.preventDefault(); var i = $("msg"); send(i.value); i.value = ""; });
+  $("poses").addEventListener("click", function(e){ var p = e.target.dataset && e.target.dataset.p; if (p) setPose(p === poseName ? "idle" : p); });
+  $("chips").addEventListener("click", function(e){ var q = e.target.dataset && e.target.dataset.q; if (q) send(q); });
+  cat.addEventListener("click", function(){
+    unlockAudio(); flash("wave", 1800);
+    var l = ["¡Miau! ¿En qué te ayudo?", "Aquí colgado, listo para ayudarte.", "¿Un temporizador, un recordatorio o charlamos?"];
+    var x = l[Math.floor(Math.random() * l.length)]; bubble.textContent = x; speak(x);
+  });
+  var voz = $("voz");
+  function paintVoz(){ voz.setAttribute("aria-pressed", voiceOn); voz.textContent = voiceOn ? "Voz: sí" : "Voz: no"; }
+  voz.addEventListener("click", function(){
+    voiceOn = !voiceOn; save("michi.voz", voiceOn); paintVoz();
+    if (!voiceOn){ try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){} }
+  });
+
+  paintVoz(); renderAvisos();
+  var hola = "¡Miau! Soy Michi Araña. Toca Mic y dime: Oye Michi, ¿qué hora es? También pongo temporizadores, recordatorios y hago poses.";
+  addMsg("cat", hola); bubble.textContent = hola;
+})();
+</script>
+
+</body></html>
