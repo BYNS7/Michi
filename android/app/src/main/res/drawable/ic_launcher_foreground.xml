@@ -2,15 +2,20 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#E23636" android:strokeColor="#1A1A2E" android:strokeWidth="2.5"
-        android:pathData="M54,22 A32,31 0 1,1 53.99,22 Z" />
-    <path android:strokeColor="#9E1B1B" android:strokeWidth="1.2" android:fillColor="#00000000"
-        android:pathData="M54,50 L54,21 M54,50 L76,31 M54,50 L86,53 M54,50 L76,75 M54,50 L54,84 M54,50 L32,75 M54,50 L22,53 M54,50 L32,31
-                          M54,34 Q60,40 66,39 Q70,45 70,52 Q66,58 66,63 Q60,63 54,67 Q48,63 42,63 Q42,58 38,52 Q38,45 42,39 Q48,40 54,34" />
-    <path android:fillColor="#FFFFFF" android:strokeColor="#1A1A2E" android:strokeWidth="3"
-        android:pathData="M30,46 Q34,36 49,47 Q49,62 37,61 Q29,58 30,46 Z" />
-    <path android:fillColor="#FFFFFF" android:strokeColor="#1A1A2E" android:strokeWidth="3"
-        android:pathData="M78,46 Q74,36 59,47 Q59,62 71,61 Q79,58 78,46 Z" />
-    <path android:fillColor="#FF8FA3" android:fillAlpha="0.6"
-        android:pathData="M27,66 a4,3 0 1,0 8,0 a4,3 0 1,0 -8,0 Z M73,66 a4,3 0 1,0 8,0 a4,3 0 1,0 -8,0 Z" />
+    <!-- Cabeza amarilla de minifigura -->
+    <path android:fillColor="#F6CB2F" android:strokeColor="#1A1A22" android:strokeWidth="2"
+        android:pathData="M38,40 h32 a8,8 0 0 1 8,8 v20 a8,8 0 0 1 -8,8 h-32 a8,8 0 0 1 -8,-8 v-20 a8,8 0 0 1 8,-8 Z" />
+    <!-- Casco -->
+    <path android:fillColor="#B7996A" android:strokeColor="#1A1A22" android:strokeWidth="1.6"
+        android:pathData="M26,52 C26,26 82,26 82,52 Z" />
+    <path android:fillColor="#8C7148" android:strokeColor="#1A1A22" android:strokeWidth="1.2"
+        android:pathData="M25,47 h58 v6 h-58 Z M48,28 h12 v8 h-12 Z" />
+    <!-- Lentes -->
+    <path android:fillColor="#00000000" android:strokeColor="#1A1A22" android:strokeWidth="1.8"
+        android:pathData="M37,57 h13 v8 h-13 Z M58,57 h13 v8 h-13 Z M50,60 h8" />
+    <!-- Ojos y cejas -->
+    <path android:fillColor="#1A1A22"
+        android:pathData="M43.5,61 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M64.5,61 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <path android:fillColor="#00000000" android:strokeColor="#1A1A22" android:strokeWidth="2"
+        android:pathData="M38,55 L49,56.5 M70,55 L59,56.5 M49,71 Q55,72 60,69.5" />
 </vector>

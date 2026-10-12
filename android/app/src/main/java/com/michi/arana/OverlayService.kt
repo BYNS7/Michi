@@ -47,12 +47,13 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import java.util.Locale
+import java.util.concurrent.Executors
 import kotlin.math.hypot
 import kotlin.math.min
 
 /**
- * Servicio en primer plano que mantiene a la arañita flotando sobre cualquier app.
- * - Toca la arañita: abre/cierra el panel de chat.
+ * Servicio en primer plano que mantiene a la figura flotando sobre cualquier app.
+ * - Toca la figura: abre/cierra el panel de chat.
  * - Mantén pulsada: te escucha por el micrófono.
  * - Arrástrala: se pega al borde más cercano. Suéltala sobre la ✕ de abajo para cerrarla.
  */
@@ -72,12 +73,12 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private lateinit var avisos: Avisos
     private lateinit var brain: Brain
 
-    // Arañita flotante
-    private lateinit var spidey: SpideyView
+    // BYNS flotante
+    private lateinit var avatar: AvatarView
     private lateinit var bubbleParams: WindowManager.LayoutParams
     private var bubbleSize = 0
 
-    // Globo de diálogo junto a la arañita
+    // Globo de diálogo junto a la figura
     private lateinit var talk: TextView
     private lateinit var talkParams: WindowManager.LayoutParams
     private var talkShown = false
@@ -102,6 +103,20 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private var recognizer: SpeechRecognizer? = null
     private var listening = false
 
+    // «Oye BYNS»: escucha continua en segundo plano
+    private enum class Listen { NONE, WAKE, COMMAND }
+    private var listenMode = Listen.NONE
+    private var speaking = false
+    private var listenAfterSpeech = false
+    private val wakeRunnable = Runnable { startWake() }
+    private val wakeRegex = Regex("(?:^|\\b)(?:oye|hey|ey|oie|hola|ok|okey)?\\s*(?:byns|bins|bines|binz|bains|baines|bayns|baynes|beins|veins|vins|vines|vyns|bings|bain|vains|byn)\\b[\\s,.]*(.*)$")
+
+    // Claude
+    private val executor = Executors.newSingleThreadExecutor()
+    private var claude: ClaudeClient? = null
+    private var claudeKey = ""
+    private val prefs get() = getSharedPreferences("michi", MODE_PRIVATE)
+
     private val ticker = object : Runnable {
         override fun run() {
             val due = avisos.popDue(System.currentTimeMillis())
@@ -117,21 +132,28 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         running = true
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         avisos = Avisos(this)
-        brain = Brain(this, avisos)
+        brain = Brain(this, avisos) { avatar.skin }
         startInForeground()
         tts = TextToSpeech(this, this)
         buildBubble()
         buildTalk()
         buildCloseZone()
         main.post(ticker)
-        main.postDelayed({ say("¡Hola! Aquí estoy. Tócame para hablar, o mantenme pulsado para dictarme.", SpideyView.Mood.WAVE, showBubble = true) }, 600)
+        main.postDelayed({ say(brain.hola(), if (avatar.skin == AvatarView.Skin.SOLDADO) AvatarView.Move.SALUTE else AvatarView.Move.WAVE) }, 600)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
             ACTION_LISTEN -> startListening()
-            else -> startInForeground()  // vuelve a declarar los tipos por si ahora hay permiso de micrófono
+            else -> {
+                startInForeground()  // vuelve a declarar los tipos por si ahora hay permiso de micrófono
+                if (::avatar.isInitialized) {
+                    val sk = savedSkin()
+                    if (sk != avatar.skin) { avatar.transformTo(sk); applyVoice(sk) }
+                }
+                if (prefs.getBoolean("wake", false)) scheduleWake(1500) else stopWake()
+            }
         }
         return START_STICKY
     }
@@ -140,8 +162,9 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         running = false
         main.removeCallbacksAndMessages(null)
         recognizer?.destroy(); recognizer = null
+        executor.shutdownNow()
         tts?.shutdown(); tts = null
-        listOfNotNull(spidey, panel, if (talkShown) talk else null, if (closeShown) closeZone else null).forEach {
+        listOfNotNull(avatar, panel, if (talkShown) talk else null, if (closeShown) closeZone else null).forEach {
             try { wm.removeView(it) } catch (_: Exception) {}
         }
         super.onDestroy()
@@ -149,7 +172,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Al girar la tablet, mantener la arañita dentro de la pantalla
+        // Al girar la tablet, mantener la figura dentro de la pantalla
         main.postDelayed({
             snapToEdge(animate = false)
             panel?.let { layoutPanel(); wm.updateViewLayout(it, panelParams) }
@@ -160,15 +183,15 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     private fun startInForeground() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(NotificationChannel(CHANNEL_RUN, "Michi activo", NotificationManager.IMPORTANCE_MIN))
-        nm.createNotificationChannel(NotificationChannel(CHANNEL_AVISO, "Avisos de Michi", NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_RUN, "BYNS activo", NotificationManager.IMPORTANCE_MIN))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_AVISO, "Avisos de BYNS", NotificationManager.IMPORTANCE_HIGH))
 
         val stop = PendingIntent.getService(this, 1, Intent(this, OverlayService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(this, CHANNEL_RUN)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setContentTitle("Michi Araña está flotando")
-            .setContentText("Toca la arañita para hablar con ella")
+            .setContentTitle("BYNS está activo")
+            .setContentText("Di «Oye BYNS» o toca el muñequito")
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(null, "Ocultar", stop).build())
             .setOngoing(true)
@@ -203,13 +226,13 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         if (stroke > 0) setStroke(stroke, strokeColor)
     }
 
-    // ---------------------------------------------------------------- arañita
+    // ---------------------------------------------------------------- figura
 
     @SuppressLint("ClickableViewAccessibility")
     private fun buildBubble() {
         val isTablet = resources.configuration.smallestScreenWidthDp >= 600
-        bubbleSize = dp(if (isTablet) 110 else 84)
-        spidey = SpideyView(this).apply { contentDescription = "Michi Araña, asistente" }
+        bubbleSize = dp(if (isTablet) 130 else 96)
+        avatar = AvatarView(this).apply { contentDescription = "BYNS, asistente"; setSkinNow(savedSkin()) }
         bubbleParams = overlayParams(
             bubbleSize, bubbleSize,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -218,7 +241,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             x = prefs.getInt("x", screenW - bubbleSize)
             y = prefs.getInt("y", screenH / 3)
         }
-        wm.addView(spidey, bubbleParams)
+        wm.addView(avatar, bubbleParams)
         snapToEdge(animate = false)
 
         val slop = ViewConfiguration.get(this).scaledTouchSlop
@@ -226,7 +249,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         var dragging = false; var longPressed = false
         val longPress = Runnable { longPressed = true; vibrate(30); startListening() }
 
-        spidey.setOnTouchListener { _, e ->
+        avatar.setOnTouchListener { _, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.rawX; downY = e.rawY; startX = bubbleParams.x; startY = bubbleParams.y
@@ -241,7 +264,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                     }
                     if (dragging) {
                         bubbleParams.x = startX + dx.toInt(); bubbleParams.y = startY + dy.toInt()
-                        wm.updateViewLayout(spidey, bubbleParams)
+                        wm.updateViewLayout(avatar, bubbleParams)
                         highlightClose(overClose())
                     }
                 }
@@ -270,14 +293,14 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         }
         if (!animate) {
             bubbleParams.x = targetX
-            try { wm.updateViewLayout(spidey, bubbleParams) } catch (_: Exception) {}
+            try { wm.updateViewLayout(avatar, bubbleParams) } catch (_: Exception) {}
             save(); return
         }
         ValueAnimator.ofInt(bubbleParams.x, targetX).apply {
             duration = 220
             addUpdateListener {
                 bubbleParams.x = it.animatedValue as Int
-                try { wm.updateViewLayout(spidey, bubbleParams) } catch (_: Exception) {}
+                try { wm.updateViewLayout(avatar, bubbleParams) } catch (_: Exception) {}
             }
             start()
         }
@@ -379,9 +402,16 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         // Cabecera
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         header.addView(TextView(this).apply {
-            text = "Michi Araña"; textSize = 22f; setTextColor(red)
+            text = "BYNS"; textSize = 24f; setTextColor(red)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD_ITALIC)
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        for ((label, sk) in listOf("🪖" to AvatarView.Skin.SOLDADO, "🔴" to AvatarView.Skin.ARANA_ROJA, "⚫" to AvatarView.Skin.ARANA_NEGRA)) {
+            header.addView(Button(this).apply {
+                text = label; textSize = 16f; contentDescription = sk.title
+                background = round(Color.parseColor("#DDE3F2"), dp(20).toFloat())
+                setOnClickListener { changeSkin(sk) }
+            }, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(6) })
+        }
         header.addView(Button(this).apply {
             text = "✕"; textSize = 18f; setTextColor(ink); contentDescription = "Cerrar panel"
             background = round(Color.parseColor("#DDE3F2"), dp(20).toFloat())
@@ -402,7 +432,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
         // Atajos
         val chips = LinearLayout(this)
-        listOf("¿Qué hora es?", "Temporizador de 5 minutos", "Recuérdame tomar agua en 30 minutos", "¿Qué avisos tengo?", "Abre YouTube", "Cuéntame un chiste", "Batería")
+        listOf("Transfórmate", "Saca el fusil", "Columpiate", "Baila", "Voltereta", "¿Qué hora es?", "Temporizador de 5 minutos", "Abre YouTube", "Cuéntame un chiste")
             .forEach { q ->
                 chips.addView(Button(this).apply {
                     text = q; isAllCaps = false; textSize = 14f; setTextColor(ink)
@@ -449,10 +479,10 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         layoutPanel()
         root.requestFocus()
         wm.addView(root, panelParams)
-        // Volver a poner la arañita encima del panel
-        wm.removeView(spidey); wm.addView(spidey, bubbleParams)
+        // Volver a poner la figura encima del panel
+        wm.removeView(avatar); wm.addView(avatar, bubbleParams)
         paintMic()
-        spidey.setMood(SpideyView.Mood.WAVE, 1200)
+        avatar.play(AvatarView.Move.WAVE, 1200)
     }
 
     private fun layoutPanel(keyboard: Boolean = false) {
@@ -501,11 +531,47 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private fun send(text: String) {
         if (text.isBlank()) return
         addMsg(true, text.trim())
-        spidey.setMood(SpideyView.Mood.THINK, 500)
+        avatar.play(AvatarView.Move.THINK, 500)
         main.postDelayed({
             val r = brain.handle(text)
-            say(r.text, r.mood)
+            if (r != null) apply(r) else askClaude(text)
         }, 350)
+    }
+
+    private fun apply(r: Reply) {
+        avatar.facing = if (onLeft()) 1 else -1   // apunta/dispara hacia el centro de la pantalla
+        if (r.skin != null) {
+            changeSkin(r.skin, announce = false)
+            main.postDelayed({ say(r.text) }, 700)
+        } else say(r.text, r.move, r.moveMs)
+    }
+
+    private fun savedSkin(): AvatarView.Skin =
+        try { AvatarView.Skin.valueOf(prefs.getString("skin", "SOLDADO")!!) } catch (_: Exception) { AvatarView.Skin.SOLDADO }
+
+    private fun changeSkin(sk: AvatarView.Skin, announce: Boolean = true) {
+        prefs.edit().putString("skin", sk.name).apply()
+        if (sk == avatar.skin) return
+        avatar.transformTo(sk)
+        applyVoice(sk)
+        if (announce) main.postDelayed({ say(brain.hola()) }, 900)
+    }
+
+    private fun askClaude(text: String) {
+        val key = prefs.getString("claude_key", "")!!.trim()
+        if (key.isEmpty()) { apply(brain.offline(text)); return }
+        if (claude == null || key != claudeKey) { claude = ClaudeClient(key); claudeKey = key }
+        val c = claude!!
+        val skin = avatar.skin
+        avatar.play(AvatarView.Move.THINK)
+        showTalk("Buscando con Claude…", 20000)
+        executor.execute {
+            val answer = c.ask(text, skin)
+            main.post {
+                avatar.play(AvatarView.Move.IDLE)
+                say(answer, AvatarView.Move.WAVE, 1500)
+            }
+        }
     }
 
     // ---------------------------------------------------------------- hablar
@@ -516,26 +582,55 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         val sys = Locale.getDefault()
         val loc = if (sys.language == "es") sys else Locale("es", "ES")
         if (t.setLanguage(loc) < TextToSpeech.LANG_AVAILABLE) t.setLanguage(Locale("es"))
-        t.setPitch(1.35f); t.setSpeechRate(1.05f)
         t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(id: String?) { main.post { spidey.talking = true } }
-            override fun onDone(id: String?) { main.post { spidey.talking = false } }
+            override fun onStart(id: String?) { main.post { avatar.talking = true; speaking = true } }
+            override fun onDone(id: String?) { main.post { afterSpeech() } }
             @Deprecated("Deprecated in Java")
-            override fun onError(id: String?) { main.post { spidey.talking = false } }
+            override fun onError(id: String?) { main.post { afterSpeech() } }
         })
         ttsReady = true
+        applyVoice(avatar.skin)
     }
 
-    private fun say(text: String, mood: SpideyView.Mood = SpideyView.Mood.IDLE, showBubble: Boolean = true) {
+    private fun afterSpeech() {
+        avatar.talking = false; speaking = false
+        if (listenAfterSpeech) { listenAfterSpeech = false; startListening() } else scheduleWake(400)
+    }
+
+    /**
+     * Una voz distinta para cada traje, elegida entre las voces en español instaladas en la tablet,
+     * con su propio tono y velocidad.
+     */
+    private fun applyVoice(sk: AvatarView.Skin) {
+        val t = tts ?: return
+        if (!ttsReady) return
+        val v = when (sk) {
+            AvatarView.Skin.SOLDADO -> VoiceStyle(0.8f, 0.95f, 0, listOf("es-es", "es-mx", "es-us"))
+            AvatarView.Skin.ARANA_ROJA -> VoiceStyle(1.2f, 1.1f, 1, listOf("es-us", "es-mx", "es-es"))
+            AvatarView.Skin.ARANA_NEGRA -> VoiceStyle(1.0f, 1.15f, 2, listOf("es-us", "es-mx", "es-es"))
+        }
+        try {
+            val voices = t.voices.orEmpty().filter { it.locale.language == "es" && !it.isNetworkConnectionRequired }
+                .sortedWith(compareBy({ x -> v.prefer.indexOf(x.locale.toLanguageTag().lowercase()).let { if (it < 0) 9 else it } }, { it.name }))
+            if (voices.isNotEmpty()) t.voice = voices[v.idx % voices.size]
+        } catch (_: Exception) {}
+        t.setPitch(v.pitch); t.setSpeechRate(v.rate)
+    }
+
+    private data class VoiceStyle(val pitch: Float, val rate: Float, val idx: Int, val prefer: List<String>)
+
+    private fun say(text: String, move: AvatarView.Move = AvatarView.Move.IDLE, ms: Long = 2500, showBubble: Boolean = true) {
         addMsg(false, text)
-        if (mood != SpideyView.Mood.IDLE) spidey.setMood(mood, 2500)
+        if (move != AvatarView.Move.IDLE) avatar.play(move, ms)
+        if (listenMode == Listen.WAKE) { try { recognizer?.cancel() } catch (_: Exception) {}; listenMode = Listen.NONE }
+        main.removeCallbacks(wakeRunnable)
         if (showBubble) showTalk(text, (2500L + text.length * 70L).coerceAtMost(12000L))
         val muted = getSharedPreferences("michi", MODE_PRIVATE).getBoolean("mute", false)
         if (ttsReady && !muted) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "m" + System.nanoTime())
         } else {
-            spidey.talking = true
-            main.postDelayed({ spidey.talking = false }, (800L + text.length * 50L).coerceAtMost(6000L))
+            avatar.talking = true; speaking = true
+            main.postDelayed({ afterSpeech() }, (800L + text.length * 50L).coerceAtMost(6000L))
         }
     }
 
@@ -551,7 +646,10 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             say("Esta tablet no tiene reconocimiento de voz. Instala o activa la app de Google para dictar.")
             return
         }
-        tts?.stop(); spidey.talking = false
+        tts?.stop(); avatar.talking = false; speaking = false
+        main.removeCallbacks(wakeRunnable)
+        if (listenMode == Listen.WAKE) { try { recognizer?.cancel() } catch (_: Exception) {} }
+        listenMode = Listen.COMMAND
         if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply { setRecognitionListener(listener) }
         val sys = Locale.getDefault()
         val lang = if (sys.language == "es") sys.toLanguageTag() else "es-ES"
@@ -561,16 +659,65 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         listening = true; paintMic()
-        spidey.setMood(SpideyView.Mood.LISTEN)
+        avatar.play(AvatarView.Move.LISTEN)
         showTalk("Te escucho…", 6000)
-        try { recognizer?.startListening(i) } catch (_: Exception) { endListening() }
+        try { recognizer?.startListening(i) } catch (_: Exception) { listenMode = Listen.NONE; endListening() }
+    }
+
+    private fun recognizerIntent(): Intent {
+        val sys = Locale.getDefault()
+        val lang = if (sys.language == "es") sys.toLanguageTag() else "es-ES"
+        return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
+            .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+    }
+
+    private fun scheduleWake(ms: Long) {
+        main.removeCallbacks(wakeRunnable)
+        if (prefs.getBoolean("wake", false)) main.postDelayed(wakeRunnable, ms)
+    }
+
+    private fun stopWake() {
+        main.removeCallbacks(wakeRunnable)
+        if (listenMode == Listen.WAKE) { try { recognizer?.cancel() } catch (_: Exception) {}; listenMode = Listen.NONE }
+    }
+
+    /** Escucha en silencio esperando «Oye BYNS». Se reinicia sola tras cada frase. */
+    private fun startWake() {
+        if (!prefs.getBoolean("wake", false) || listenMode != Listen.NONE || speaking || !hasMic()) return
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return
+        if (panel != null && ::input.isInitialized && input.hasFocus()) { scheduleWake(3000); return }
+        if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply { setRecognitionListener(listener) }
+        listenMode = Listen.WAKE
+        try { recognizer?.startListening(recognizerIntent()) } catch (_: Exception) { listenMode = Listen.NONE; scheduleWake(3000) }
+    }
+
+    private fun onWakeResults(all: List<String>) {
+        listenMode = Listen.NONE
+        for (raw in all) {
+            val m = wakeRegex.find(Brain.norm(raw)) ?: continue
+            val cmd = m.groupValues[1].trim()
+            vibrate(25)
+            if (cmd.isNotEmpty()) {
+                // «Oye BYNS, abre YouTube»: usa las últimas palabras originales (con tildes)
+                val words = raw.trim().split(Regex("\\s+"))
+                send(words.takeLast(cmd.split(" ").size).joinToString(" "))
+            } else {
+                listenAfterSpeech = true
+                say(if (avatar.skin == AvatarView.Skin.SOLDADO) "¿Sí? A la orden." else "¿Sí? Te escucho.", AvatarView.Move.LISTEN, 1500)
+            }
+            return
+        }
+        scheduleWake(150)
     }
 
     private fun stopListening() { try { recognizer?.stopListening() } catch (_: Exception) {}; endListening() }
 
     private fun endListening() {
         listening = false; paintMic()
-        if (spidey.mood == SpideyView.Mood.LISTEN) spidey.setMood(SpideyView.Mood.IDLE)
+        if (avatar.move == AvatarView.Move.LISTEN) avatar.play(AvatarView.Move.IDLE)
     }
 
     private fun paintMic() {
@@ -587,15 +734,31 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         override fun onEndOfSpeech() {}
         override fun onEvent(eventType: Int, params: Bundle?) {}
         override fun onPartialResults(partial: Bundle?) {
+            if (listenMode == Listen.WAKE) return
             val s = partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
             if (!s.isNullOrBlank()) showTalk("«$s…»", 4000)
         }
         override fun onResults(results: Bundle?) {
+            if (listenMode == Listen.WAKE) {
+                onWakeResults(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty())
+                return
+            }
+            listenMode = Listen.NONE
             endListening()
             val s = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            if (s.isNullOrBlank()) say("No te entendí bien. ¿Lo repites?", SpideyView.Mood.THINK) else send(s)
+            if (s.isNullOrBlank()) say("No te entendí bien. ¿Lo repites?", AvatarView.Move.THINK) else send(s)
         }
         override fun onError(error: Int) {
+            if (listenMode == Listen.WAKE) {
+                listenMode = Listen.NONE
+                scheduleWake(when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 150L
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY, SpeechRecognizer.ERROR_CLIENT -> 1500L
+                    else -> 5000L
+                })
+                return
+            }
+            listenMode = Listen.NONE
             endListening()
             val msg = when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No te escuché. Mantenme pulsado y vuelve a hablar."
@@ -603,7 +766,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Me falta el permiso del micrófono."
                 else -> "Uy, el micrófono falló. Prueba otra vez."
             }
-            say(msg, SpideyView.Mood.THINK)
+            say(msg, AvatarView.Move.THINK)
         }
     }
 
@@ -613,13 +776,13 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         val text = "¡Atención! Ya es hora: " + due.joinToString(" y ") { it.label } + "."
         try { RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))?.play() } catch (_: Exception) {}
         vibrate(600)
-        main.postDelayed({ say(text, SpideyView.Mood.PARTY) }, 900)
-        spidey.setMood(SpideyView.Mood.PARTY, 5000)
+        main.postDelayed({ say(text, AvatarView.Move.PARTY) }, 900)
+        avatar.play(AvatarView.Move.PARTY, 5000)
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.notify((System.currentTimeMillis() % 100000).toInt() + 100,
             Notification.Builder(this, CHANNEL_AVISO)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("Michi Araña")
+                .setContentTitle("BYNS")
                 .setContentText(due.joinToString(" · ") { it.label })
                 .setAutoCancel(true)
                 .build())

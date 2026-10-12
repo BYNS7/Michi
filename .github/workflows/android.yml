@@ -1,4 +1,4 @@
-name: APK de Michi Araña
+name: APK de BYNS
 
 on:
   push:
@@ -27,21 +27,32 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
+      - name: Probar el dibujo del avatar
+        continue-on-error: true
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: avatar-preview
+          path: android/app/build/avatars/
+
       - name: Renombrar APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk MichiArana.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk BYNS.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MichiArana-apk
-          path: MichiArana.apk
+          name: BYNS-apk
+          path: BYNS.apk
 
       # Publica la APK en «Releases» para descargarla directo desde la tablet
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: michi-apk
-          name: Michi Araña (APK para Android)
+          tag_name: byns-apk
+          name: BYNS (APK para Android)
           prerelease: true
-          files: MichiArana.apk
+          files: BYNS.apk
           body: |
-            Descarga **MichiArana.apk** desde la tablet Android, ábrela e instálala
+            Descarga **BYNS.apk** desde la tablet Android, ábrela e instálala
             (permite «instalar apps desconocidas» si te lo pide). Luego sigue los pasos dentro de la app.

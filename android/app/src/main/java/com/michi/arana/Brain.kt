@@ -49,14 +49,19 @@ class Avisos(context: Context) {
     }
 }
 
-/** Respuesta del asistente: lo que dice y el gesto que hace. */
-data class Reply(val text: String, val mood: SpideyView.Mood = SpideyView.Mood.IDLE)
+/** Respuesta del asistente: lo que dice, el movimiento que hace y, si toca, el traje al que cambia. */
+data class Reply(
+    val text: String,
+    val move: AvatarView.Move = AvatarView.Move.IDLE,
+    val moveMs: Long = 2500,
+    val skin: AvatarView.Skin? = null
+)
 
 /**
- * Entiende frases sencillas en español y responde. Todo funciona sin internet
- * (salvo abrir búsquedas, que se las pasa al navegador).
+ * Entiende órdenes sencillas en español sin internet. Si no reconoce la frase devuelve null
+ * y el servicio se la pregunta a Claude.
  */
-class Brain(private val ctx: Context, private val avisos: Avisos) {
+class Brain(private val ctx: Context, private val avisos: Avisos, private val skin: () -> AvatarView.Skin) {
 
     private val es = Locale("es")
 
@@ -68,17 +73,22 @@ class Brain(private val ctx: Context, private val avisos: Avisos) {
         "¿Por qué la araña no juega a las escondidas? Porque siempre la pillan en su red."
     )
 
-    fun handle(raw: String): Reply {
+    fun handle(raw: String): Reply? {
         val text = raw.trim()
         val t = norm(text)
         val now = Date()
 
         if (Regex("\\b(hola|buenas|buenos dias|que tal|hey)\\b").containsMatchIn(t))
-            return Reply("¡Hola, hola! Tu amigo arácnido está listo. ¿En qué te ayudo?", SpideyView.Mood.WAVE)
-        if ("gracias" in t) return Reply("¡De nada! Un gran poder conlleva una gran amabilidad.", SpideyView.Mood.WAVE)
+            return Reply(hola(), if (skin() == AvatarView.Skin.SOLDADO) AvatarView.Move.SALUTE else AvatarView.Move.WAVE)
+        if ("gracias" in t) return Reply(when (skin()) {
+            AvatarView.Skin.SOLDADO -> "¡A la orden! Para eso estoy."
+            AvatarView.Skin.ARANA_ROJA -> "¡De nada! Un gran poder conlleva una gran amabilidad."
+            AvatarView.Skin.ARANA_NEGRA -> "Tranqui, para eso estamos los vecinos arácnidos."
+        }, AvatarView.Move.WAVE)
         if (Regex("quien eres|como te llamas|tu nombre").containsMatchIn(t))
-            return Reply("Soy Michi Araña, tu asistente flotante. Me cuelgo encima de cualquier app para ayudarte.", SpideyView.Mood.WAVE)
-        if ("chiste" in t) return Reply(chistes.random(), SpideyView.Mood.PARTY)
+            return Reply("Soy BYNS, tu asistente. Ahora llevo el traje de ${skin().title.removePrefix("BYNS ").lowercase()}. Di «Oye BYNS» y te ayudo en cualquier app.", AvatarView.Move.WAVE)
+
+        if ("chiste" in t) return Reply(chistes.random(), AvatarView.Move.PARTY)
 
         if (Regex("\\b(que hora|hora es|dime la hora)\\b").containsMatchIn(t))
             return Reply("Son las ${hhmm(now.time)}.")
@@ -120,8 +130,11 @@ class Brain(private val ctx: Context, private val avisos: Avisos) {
             }
             avisos.add(label, at)
             val cuando = if (dur > 0) "te aviso en ${fmtDur(dur)}" else "te aviso a las ${hhmm(at)}"
-            return Reply("¡Hecho! $label: $cuando.", SpideyView.Mood.WAVE)
+            return Reply("¡Hecho! $label: $cuando.", AvatarView.Move.WAVE)
         }
+
+        traje(t)?.let { return it }
+        movimiento(t)?.let { return it }
 
         // Abrir apps: «abre YouTube», «abrir la cámara»
         Regex("^(?:por favor\\s+)?(?:abre|abrir|abreme|lanza|inicia|pon)\\s+(?:la |el |los |las |app (?:de )?)?(.+)$").find(t)?.let { m ->
@@ -129,16 +142,68 @@ class Brain(private val ctx: Context, private val avisos: Avisos) {
             return openApp(name)
         }
 
-        // Búsquedas: «busca recetas de pan»
+        return null
+    }
+
+    /** Sin Claude configurado: búsquedas al navegador o ayuda. */
+    fun offline(text: String): Reply {
+        val t = norm(text)
         Regex("^(?:busca|buscar|buscame|googlea|que es|quien es|quien fue)\\s+(.+)$").find(t)?.let { m ->
             val q = if (t.startsWith("busca") || t.startsWith("googlea")) m.groupValues[1] else text
             return search(q)
         }
-
         return Reply(
-            "Eso aún no lo sé. Prueba: «¿qué hora es?», «temporizador de 5 minutos», «recuérdame tomar agua en 30 minutos», «abre YouTube», «busca dinosaurios» o «cuéntame un chiste».",
-            SpideyView.Mood.THINK
+            "Para responder cualquier pregunta necesito la clave de Claude: ábreme y pégala en Ajustes. Mientras tanto puedo decirte la hora, poner avisos, abrir apps o cambiar de traje.",
+            AvatarView.Move.THINK
         )
+    }
+
+    fun hola(): String = when (skin()) {
+        AvatarView.Skin.SOLDADO -> "¡BYNS reportándose! ¿Cuál es la misión?"
+        AvatarView.Skin.ARANA_ROJA -> "¡Hola! Tu amigable vecino BYNS está listo. ¿Qué necesitas?"
+        AvatarView.Skin.ARANA_NEGRA -> "¡Qué onda! BYNS en modo traje negro. ¿Qué hacemos?"
+    }
+
+    private fun traje(t: String): Reply? {
+        val wants = Regex("\\b(cambia|cambiate|transforma|transformate|convierte|conviertete|ponte|pon|traje|modo|vuelve|usa)\\b").containsMatchIn(t)
+        if (!wants) return null
+        val target = when {
+            Regex("\\b(soldado|militar|ejercito|camuflaje|comando)\\b").containsMatchIn(t) -> AvatarView.Skin.SOLDADO
+            Regex("\\b(negro|negra|miles|morales|oscuro)\\b").containsMatchIn(t) -> AvatarView.Skin.ARANA_NEGRA
+            Regex("\\b(rojo|roja|spider ?man|spiderman|hombre arana|arana|clasico|aracnido)\\b").containsMatchIn(t) -> AvatarView.Skin.ARANA_ROJA
+            Regex("\\btransforma(te)?\\b|\\bcambia(te)? de traje\\b|\\botro traje\\b").containsMatchIn(t) ->
+                AvatarView.Skin.values()[(skin().ordinal + 1) % AvatarView.Skin.values().size]
+            else -> return null
+        }
+        if (target == skin()) return Reply("Ya llevo ese traje.", AvatarView.Move.WAVE)
+        val text = when (target) {
+            AvatarView.Skin.SOLDADO -> "¡Modo soldado activado! Listo para la misión."
+            AvatarView.Skin.ARANA_ROJA -> "¡Traje rojo y azul puesto! Tu amigable vecino al rescate."
+            AvatarView.Skin.ARANA_NEGRA -> "¡Traje negro activado! Ahora con chispa eléctrica."
+        }
+        return Reply(text, AvatarView.Move.TRANSFORM, 1100, target)
+    }
+
+    private fun movimiento(t: String): Reply? {
+        val soldier = skin() == AvatarView.Skin.SOLDADO
+        return when {
+            Regex("fusil|rifle|apunta|posicion de (disparo|tiro)|dispara|saca (el|tu) arma|en guardia").containsMatchIn(t) ->
+                if (soldier) Reply("¡Fusil listo! En posición de tiro.", AvatarView.Move.AIM, 6000)
+                else Reply("Mis únicas armas son las telarañas. ¡Fiu!", AvatarView.Move.WEB, 2500)
+            Regex("saludo militar|firmes|saluda").containsMatchIn(t) ->
+                if (soldier) Reply("¡A la orden, mi comandante!", AvatarView.Move.SALUTE, 3000) else Reply("¡Hola, hola!", AvatarView.Move.WAVE)
+            Regex("\\bbaila|bailar|bailecito").containsMatchIn(t) -> Reply("¡Mira estos pasos!", AvatarView.Move.DANCE, 5000)
+            Regex("voltereta|mortal|pirueta|flip").containsMatchIn(t) -> Reply("¡Hop!", AvatarView.Move.FLIP, 900)
+            Regex("\\bsalta|saltar|brinca").containsMatchIn(t) -> Reply("¡Boing, boing!", AvatarView.Move.PARTY, 2500)
+            Regex("\\bcamina|marcha|\\bpasea").containsMatchIn(t) -> Reply(if (soldier) "¡Un, dos, un, dos!" else "Dando un paseo por el barrio.", AvatarView.Move.WALK, 4000)
+            Regex("columpia|balancea|cuelga").containsMatchIn(t) ->
+                if (soldier) Reply("Para columpiarme necesito un traje arácnido. Dime «transfórmate».", AvatarView.Move.THINK)
+                else Reply("¡Wiii! Columpiándome por la ciudad.", AvatarView.Move.SWING, 5000)
+            Regex("telarana|lanza (una )?red").containsMatchIn(t) ->
+                if (soldier) Reply("Sin traje arácnido no tengo telarañas.", AvatarView.Move.THINK)
+                else Reply("¡Fiu! Telaraña lanzada.", AvatarView.Move.WEB, 2500)
+            else -> null
+        }
     }
 
     private fun openApp(name: String): Reply {
@@ -149,27 +214,27 @@ class Brain(private val ctx: Context, private val avisos: Avisos) {
         val best = apps.map { it to norm(it.loadLabel(pm).toString()) }
             .filter { (_, label) -> label == wanted || label.contains(wanted) || wanted.contains(label) }
             .minByOrNull { (_, label) -> if (label == wanted) 0 else 1 + kotlin.math.abs(label.length - wanted.length) }
-            ?: return Reply("No encontré ninguna app llamada «$name».", SpideyView.Mood.THINK)
+            ?: return Reply("No encontré ninguna app llamada «$name».", AvatarView.Move.THINK)
         val info = best.first.activityInfo
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             .setClassName(info.packageName, info.name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         return try {
             ctx.startActivity(intent)
-            Reply("¡Allá voy! Abriendo ${best.first.loadLabel(pm)}.", SpideyView.Mood.WAVE)
+            Reply("¡Allá voy! Abriendo ${best.first.loadLabel(pm)}.", AvatarView.Move.WAVE)
         } catch (_: Exception) {
-            Reply("No pude abrir ${best.first.loadLabel(pm)}.", SpideyView.Mood.THINK)
+            Reply("No pude abrir ${best.first.loadLabel(pm)}.", AvatarView.Move.THINK)
         }
     }
 
     private fun search(q: String): Reply {
         val web = Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, q).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
-            ctx.startActivity(web); Reply("Buscando «$q» en la red… ¡la otra red!", SpideyView.Mood.WAVE)
+            ctx.startActivity(web); Reply("Buscando «$q» en la red… ¡la otra red!", AvatarView.Move.WAVE)
         } catch (_: Exception) {
             try {
                 ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(q))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                Reply("Buscando «$q».", SpideyView.Mood.WAVE)
+                Reply("Buscando «$q».", AvatarView.Move.WAVE)
             } catch (_: Exception) { Reply("No encontré un navegador para buscar.") }
         }
     }

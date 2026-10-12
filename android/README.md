@@ -1,31 +1,54 @@
-# Michi Araña · asistente flotante para Android
+# BYNS · asistente flotante para Android
 
-Una arañita héroe estilo chibi que flota **encima de cualquier aplicación** de la tablet.
+Una minifigura estilo bloques que flota **encima de cualquier aplicación** de la tablet.
+Tiene tres trajes y se transforma entre ellos:
 
-- **Toca** a Michi → se abre el chat (escribe o toca 🎤).
+| Traje | Movimientos especiales |
+|---|---|
+| 🪖 **Soldado** (principal): casco, lentes, camuflaje y chaleco con la bandera de Bolivia | saca el fusil en posición de tiro, saludo militar, marcha |
+| 🔴 **Araña roja** | se columpia de una telaraña, lanza telarañas |
+| ⚫ **Araña negra** (traje con rayos) | igual que la roja, con su propio estilo |
+
+Todos: saludar, saltar, bailar, voltereta, caminar, escuchar (ondas), pensar y transformarse (gira y suelta piezas).
+
+## Cómo se usa
+
+- Di **«Oye BYNS»** (si activas la escucha permanente) y luego tu orden, o todo junto: «Oye BYNS, abre YouTube».
+- **Toca** a BYNS → chat (escribe o 🎤), con botones para cambiar de traje.
 - **Mantén pulsado** → te escucha directamente.
-- **Arrastra** → se pega al borde; suéltalo sobre la ✕ de abajo para esconderlo.
+- **Arrastra** → se pega al borde; suéltalo sobre la ✕ para esconderlo.
 
-Entiende en español: la hora y la fecha, temporizadores, recordatorios («recuérdame tomar agua en 30 minutos»,
-«… a las 6 de la tarde»), «¿qué avisos tengo?», «abre YouTube», «busca …», la batería y chistes.
-Habla en voz alta (se puede silenciar desde la app).
+Entiende en español: «transfórmate», «ponte el traje negro», «modo soldado», «saca el fusil», «baila», «voltereta»,
+«columpiate», la hora y la fecha, temporizadores y recordatorios, «abre …» (cualquier app instalada), la batería y chistes.
+**Cualquier otra pregunta se la pasa a Claude**, que puede buscar en internet, y responde con la personalidad del traje.
+
+## Preguntas con Claude
+
+Pega tu clave de la API de Claude (console.anthropic.com → API Keys) en la app, sección «Preguntas con Claude».
+La clave se guarda solo en la tablet. Cada pregunta consume saldo de tu cuenta de Anthropic.
+Se usa el modelo Claude Opus 5.5 con esfuerzo bajo (respuestas rápidas), búsqueda web y respaldo automático
+del servidor si el modelo rechaza una petición.
+
+## Voces
+
+Cada traje usa una voz distinta de las voces en español instaladas en la tablet, con su propio tono y velocidad.
+No se usan las voces reales de los actores de las películas (son voces protegidas). Para más variedad, instala más
+voces en Ajustes → Texto a voz → Google → Instalar datos de voz.
 
 ## Instalar en la tablet
 
-1. En GitHub, abre **Releases → Michi Araña (APK para Android)** y descarga `MichiArana.apk` desde la tablet.
-   (También queda como artefacto en la pestaña **Actions**.)
-2. Ábrela e instálala. Android pedirá permitir «instalar apps desconocidas» para el navegador o Archivos.
-3. Abre **Michi Araña** y sigue los pasos: permitir «mostrar sobre otras apps», permitir el micrófono
-   y tocar **¡Activar a Michi!**.
+1. Descarga `BYNS.apk` desde **Releases → BYNS (APK para Android)** en la tablet e instálala.
+2. Abre **BYNS**: permite «mostrar sobre otras apps», permite el micrófono y toca **¡Activar a BYNS!**.
+3. Opcional: activa «Escuchar siempre "Oye BYNS"» y pega tu clave de Claude.
 
-Requiere Android 8.0 o superior. El dictado por voz usa el reconocimiento de voz del sistema (app de Google).
+Requiere Android 8.0 o superior. El dictado usa el reconocimiento de voz del sistema (app de Google).
+La escucha permanente gasta más batería y, según la tablet, puede sonar un pitido cada vez que se reinicia.
 En iPad no es posible: iOS no permite que una app se dibuje encima de las demás.
 
 ## Compilar
 
 ```sh
 cd android
-./gradlew assembleDebug   # → app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleDebug        # APK en app/build/outputs/apk/debug/
+./gradlew testDebugUnitTest    # dibuja todos los trajes/poses en app/build/avatars/avatars.png
 ```
-
-Cada push que toque `android/` compila la APK con GitHub Actions (`.github/workflows/android.yml`).
