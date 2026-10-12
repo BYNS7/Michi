@@ -52,7 +52,9 @@ jobs:
           tag_name: byns-apk
           name: BYNS (APK para Android)
           prerelease: true
-          files: BYNS.apk
+          files: |
+            BYNS.apk
+            android/app/build/avatars/avatars.png
           body: |
             Descarga **BYNS.apk** desde la tablet Android, ábrela e instálala
             (permite «instalar apps desconocidas» si te lo pide). Luego sigue los pasos dentro de la app.
