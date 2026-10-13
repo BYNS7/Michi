@@ -1,0 +1,49 @@
+name: Herramientas de prueba (temporal)
+
+on:
+  push:
+    paths:
+      - ".github/workflows/devtools.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  jars:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - name: Descargar dependencias AndroidX de Robolectric
+        run: |
+          mkdir dl && cd dl
+          cat > settings.gradle.kts <<'EOT'
+          rootProject.name = "dl"
+          EOT
+          cat > build.gradle.kts <<'EOT'
+          repositories { google(); mavenCentral() }
+          val deps by configurations.creating
+          dependencies { deps("org.robolectric:robolectric:4.14.1") }
+          tasks.register<Copy>("copyDeps") { from(deps); into("out") }
+          EOT
+          gradle copyDeps -q
+          mkdir jars
+          for f in out/androidx*; do
+            case "$f" in
+              *.aar) unzip -p "$f" classes.jar > "jars/$(basename "$f" .aar).jar" ;;
+              *) cp "$f" jars/ ;;
+            esac
+          done
+          ls jars
+          zip -j androidx-test-jars.zip jars/*
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: devtools
+          name: Herramientas de prueba (no instalar)
+          prerelease: true
+          files: dl/androidx-test-jars.zip
