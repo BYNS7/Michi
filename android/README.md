@@ -3,6 +3,8 @@
 Una minifigura de bloques **en 3D** que flota **encima de cualquier aplicación** de la tablet.
 Está modelada con piezas 3D (cabeza cilíndrica, torso, brazos con codo, manos en C, piernas) y se dibuja
 con perspectiva, luz y estampados, así que puede girar, tumbarse, colgarse de cabeza o hacer volteretas.
+Se mueve solo con las articulaciones de una minifigura real, sin deformar piezas: la cabeza gira a los lados,
+cada brazo gira en el hombro (el codo es fijo), las manos giran en la muñeca y cada pierna gira en la cadera.
 Tiene tres trajes y se transforma entre ellos:
 
 | Traje | Movimientos especiales |

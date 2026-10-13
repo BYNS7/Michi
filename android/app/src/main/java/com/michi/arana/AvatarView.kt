@@ -109,14 +109,20 @@ class AvatarView(context: Context) : View(context) {
 
     // ------------------------------------------------------------------ pose
 
+    /**
+     * Articulaciones de una minifigura real, sin más: la figura entera se puede mover y girar
+     * (como en una película de stop-motion), la cabeza solo gira a los lados, cada brazo solo gira
+     * en el hombro hacia adelante/atrás (el codo es fijo), las manos giran en la muñeca y cada pierna
+     * solo gira en la cadera. Ninguna pieza se estira ni se deforma.
+     */
     private class Pose {
         var x = 0f; var y = 0f; var z = 0f; var yaw = 0f; var pitch = 0f; var roll = 0f; var pivotY = 20f
-        var hYaw = 0f; var hPitch = 0f; var hRoll = 0f
-        var nX = 0f; var nY = 0f; var nZ = -6f; var nE = -30f
-        var pX = 0f; var pY = 0f; var pZ = 6f; var pE = -30f
-        var lN = 0f; var lP = 0f
+        var head = 0f
+        var armN = 0f; var armP = 0f
+        var handN = 0f; var handP = 0f
+        var legN = 0f; var legP = 0f
         var hold = false; var binoc = false; var radio = false; var web = false
-        var thread = 0 // 0 nada, 1 del casco/cabeza, 2 de los pies, 3 de la mano
+        var thread = 0 // 0 nada, 1 de la cabeza, 2 de los pies, 3 de la mano
     }
 
     private val p = Pose()
@@ -124,141 +130,109 @@ class AvatarView(context: Context) : View(context) {
     private fun computePose(g: Float, t: Float) {
         p.x = 0f; p.y = 0f; p.z = 0f; p.pitch = 0f; p.roll = 0f; p.pivotY = 20f
         p.yaw = 22f * facing
-        p.hYaw = 0f; p.hPitch = 0f; p.hRoll = 0f
-        p.nX = 0f; p.nY = 0f; p.nZ = -6f; p.nE = -30f
-        p.pX = 0f; p.pY = 0f; p.pZ = 6f; p.pE = -30f
-        p.lN = 0f; p.lP = 0f
+        p.head = 0f; p.armN = 0f; p.armP = 0f; p.handN = 0f; p.handP = 0f; p.legN = 0f; p.legP = 0f
         p.hold = false; p.binoc = false; p.radio = false; p.web = false
         p.thread = if (skin != Skin.SOLDADO) 1 else 0
         val soldier = skin == Skin.SOLDADO
         val br = sin(g * 2f)
         when (move) {
             Move.IDLE, Move.TALK -> {
-                p.y = br * 0.15f
-                p.nX = br * 4f; p.pX = -br * 4f
-                val s = sin(g * 0.55f); p.hYaw = 26f * s * s * s
+                p.armN = br * 4f; p.armP = -br * 4f
+                val s = sin(g * 0.55f); p.head = 26f * s * s * s
             }
-            Move.WAVE -> {
-                p.pX = -165f; p.pZ = 22f + sin(t * 12f) * 18f; p.pE = -15f
-                p.hRoll = 6f; p.hYaw = 8f * facing
-            }
-            Move.SALUTE -> {
-                // Mano derecha a la frente
-                p.nX = -162f; p.nY = -24f; p.nZ = -30f; p.nE = 0f
-                p.pZ = 2f; p.pE = -8f; p.thread = 0
-                p.yaw = 10f * facing
-            }
+            Move.WAVE -> { p.armP = -150f + sin(t * 10f) * 22f; p.head = 10f * facing }
+            Move.SALUTE -> { p.armN = -147f; p.yaw = 12f * facing; p.thread = 0 }
             Move.ATTENTION -> {
-                p.nZ = -1f; p.pZ = 1f; p.nE = -6f; p.pE = -6f
                 p.y = if (t < 0.25f) sin(t / 0.25f * PI.toFloat()) * 1.5f else 0f
                 p.thread = 0
             }
             Move.AIM -> {
                 p.yaw = 62f * facing
-                p.nX = -88f; p.nY = 14f; p.nZ = 0f; p.nE = -6f
-                p.pX = -84f; p.pY = -34f; p.pZ = 0f; p.pE = -6f
-                p.lN = -14f; p.lP = 14f; p.hPitch = 4f; p.hYaw = -6f
+                p.armN = -88f; p.armP = -80f; p.handN = 90f
+                p.legN = -14f; p.legP = 14f; p.head = -10f
                 p.hold = true; p.thread = 0
                 if (t > 0.6f && (t % 1.5f) < 0.1f) p.z = -0.6f
             }
             Move.KNEEL_AIM -> {
                 p.yaw = 62f * facing
-                p.y = -5.2f; p.lN = -88f; p.lP = 58f
-                p.nX = -88f; p.nY = 14f; p.nZ = 0f; p.nE = -6f
-                p.pX = -84f; p.pY = -34f; p.pZ = 0f; p.pE = -6f
+                p.y = -5.2f; p.legN = -88f; p.legP = 58f
+                p.armN = -88f; p.armP = -80f; p.handN = 90f
                 p.hold = true; p.thread = 0
             }
             Move.MARCH, Move.WALK -> {
                 val k = if (move == Move.MARCH) 42f else 28f
                 val s = sin(t * (if (move == Move.MARCH) 6f else 7f))
-                p.lN = s * k; p.lP = -s * k
-                p.nX = -s * k * 1.1f; p.pX = s * k * 1.1f
+                p.legN = s * k; p.legP = -s * k
+                p.armN = -s * k * 1.1f; p.armP = s * k * 1.1f
                 p.y = abs(cos(t * 7f)) * 0.5f
                 p.thread = 0
             }
             Move.RUN -> {
                 val s = sin(t * 12f)
-                p.lN = s * 50f; p.lP = -s * 50f; p.nX = -s * 60f; p.pX = s * 60f; p.nE = -70f; p.pE = -70f
+                p.legN = s * 50f; p.legP = -s * 50f; p.armN = -s * 60f; p.armP = s * 60f
                 p.pitch = 12f; p.y = abs(cos(t * 12f)) * 1.2f; p.thread = 0
             }
             Move.CROUCH -> {
-                p.y = -4.5f; p.lN = -62f; p.lP = -62f; p.pitch = 10f
-                p.nX = -45f; p.pX = -45f; p.hPitch = -8f; p.hYaw = sin(g) * 20f; p.thread = 0
+                p.y = -4.5f; p.legN = -62f; p.legP = -62f; p.pitch = 10f
+                p.armN = -45f; p.armP = -45f; p.head = sin(g) * 20f; p.thread = 0
             }
-            Move.SIT -> {
-                p.y = -8.6f; p.lN = -90f; p.lP = -90f
-                p.nX = -25f; p.pX = -25f; p.thread = 0
-            }
+            Move.SIT -> { p.y = -8.6f; p.legN = -90f; p.legP = -90f; p.armN = -25f; p.armP = -25f; p.thread = 0 }
             Move.PRONE -> {
                 p.yaw = 80f * facing; p.pitch = 90f; p.y = -15.5f
-                p.hPitch = -55f
-                p.nX = -160f; p.nY = 10f; p.nE = -10f; p.pX = -150f; p.pY = -20f; p.pE = -10f
+                p.armN = -160f; p.armP = -150f; p.handN = 90f
                 p.hold = soldier; p.thread = 0
             }
             Move.PUSHUPS -> {
                 val s = (sin(t * 5f) + 1f) / 2f
                 p.yaw = 80f * facing; p.pitch = 70f + s * 14f; p.y = -14f + (1 - s) * 2.5f
-                p.nX = -78f + s * 10f; p.pX = -78f + s * 10f; p.nE = 0f; p.pE = 0f
-                p.hPitch = -35f; p.thread = 0
+                p.armN = -78f + s * 10f; p.armP = -78f + s * 10f; p.thread = 0
             }
-            Move.BINOCULARS -> {
-                p.nX = -156f; p.nY = 90f; p.nZ = 48f; p.nE = 0f; p.pX = -156f; p.pY = -90f; p.pZ = -48f; p.pE = 0f
-                p.hYaw = sin(t * 0.9f) * 35f; p.binoc = true; p.thread = 0
-            }
-            Move.RADIO -> {
-                p.pX = -138f; p.pY = 48f; p.pZ = 6f; p.pE = -80f; p.hRoll = 9f; p.radio = true; p.thread = 0
-            }
-            Move.FLEX -> {
-                p.nX = -90f; p.nY = -62f; p.nE = -100f; p.pX = -90f; p.pY = 62f; p.pE = -100f
-                p.y = abs(sin(t * 3f)) * 0.6f; p.hPitch = -6f; p.thread = 0
-            }
-            Move.LOOK -> {
-                p.hYaw = sin(t * 1.2f) * 40f; p.nX = -156f; p.nY = -18f; p.nZ = -36f; p.nE = -10f; p.thread = 0
-            }
-            Move.LISTEN -> { p.nX = -132f; p.nY = -24f; p.nZ = -6f; p.nE = -80f; p.hRoll = 10f }
-            Move.THINK -> { p.pX = -96f; p.pY = -24f; p.pZ = 36f; p.pE = -50f; p.hPitch = 10f; p.hRoll = -6f }
+            Move.BINOCULARS -> { p.armN = -125f; p.armP = -125f; p.head = sin(t * 0.9f) * 35f; p.binoc = true; p.thread = 0 }
+            Move.RADIO -> { p.armP = -161f; p.radio = true; p.thread = 0 }
+            Move.FLEX -> { p.armN = -170f; p.armP = -170f; p.y = abs(sin(t * 3f)) * 0.6f; p.thread = 0 }
+            Move.LOOK -> { p.head = sin(t * 1.2f) * 40f; p.armN = -147f; p.thread = 0 }
+            Move.LISTEN -> { p.armN = -161f; p.head = 15f * facing }
+            Move.THINK -> { p.armP = -102f; p.head = -12f * facing }
             Move.PARTY -> {
                 val j = abs(sin(t * 6f)); p.y = j * 6f
-                p.nX = -170f; p.nZ = -28f; p.pX = -170f; p.pZ = 28f; p.nE = -10f; p.pE = -10f
-                p.lN = -j * 18f; p.lP = j * 18f; p.thread = 0
+                p.armN = -170f; p.armP = -170f; p.legN = -j * 18f; p.legP = j * 18f; p.thread = 0
             }
             Move.DANCE -> {
                 val s = sin(t * 7f)
                 p.yaw += sin(t * 3.5f) * 35f; p.roll = s * 7f; p.y = abs(s) * 1.2f
-                p.nX = if (s > 0) -170f else -20f; p.pX = if (s > 0) -20f else -170f
-                p.lN = if (s > 0) -25f else 0f; p.lP = if (s < 0) -25f else 0f
-                p.hRoll = -s * 8f; p.thread = 0
+                p.armN = if (s > 0) -170f else -20f; p.armP = if (s > 0) -20f else -170f
+                p.legN = if (s > 0) -25f else 0f; p.legP = if (s < 0) -25f else 0f
+                p.head = -s * 20f; p.thread = 0
             }
             Move.FLIP -> {
                 val k = (t / 0.9f).coerceIn(0f, 1f)
                 p.y = sin(PI.toFloat() * k) * 13f; p.pitch = -360f * k; p.pivotY = 22f
-                p.nX = -170f; p.pX = -170f; p.lN = -60f; p.lP = -60f; p.thread = 0
+                p.armN = -170f; p.armP = -170f; p.legN = -60f; p.legP = -60f; p.thread = 0
             }
             Move.SWING, Move.SWING_TRAVEL -> {
                 val s = sin(t * (if (move == Move.SWING) 2.6f else 3.4f))
-                p.nX = -178f; p.nZ = 6f; p.nE = 0f
-                p.pZ = 40f + s * 10f; p.pE = -20f
-                p.lN = -30f + s * 20f; p.lP = 20f - s * 20f
+                p.armN = -178f; p.armP = -40f + s * 15f
+                p.legN = -30f + s * 20f; p.legP = 20f - s * 20f
                 if (move == Move.SWING) { p.roll = s * 14f; p.pivotY = 41f }
                 p.yaw = 10f * facing; p.thread = 3
             }
             Move.HANG -> {
                 p.roll = 180f + sin(t * 1.6f) * 8f; p.pivotY = 21f; p.y = -5f
-                p.nX = -176f + sin(t * 1.6f) * 6f; p.pX = -176f - sin(t * 1.6f) * 6f; p.nE = -10f; p.pE = -10f
-                p.hPitch = 8f; p.thread = 2
+                p.armN = -176f + sin(t * 1.6f) * 6f; p.armP = -176f - sin(t * 1.6f) * 6f
+                p.thread = 2
             }
             Move.WEB -> {
-                if (facing > 0) { p.pZ = 88f; p.pE = 0f; p.pX = -10f } else { p.nZ = -88f; p.nE = 0f; p.nX = -10f }
-                p.yaw = 10f * facing; p.hYaw = 25f * facing; p.web = true; p.lN = -8f; p.lP = 8f
+                // Una minifigura no levanta el brazo de lado: se gira hacia el blanco y apunta al frente
+                p.yaw = 72f * facing; p.armN = -90f; p.head = -8f * facing; p.web = true; p.legN = -8f; p.legP = 8f
             }
             Move.TRANSFORM -> {
                 val k = (t / 1.2f).coerceIn(0f, 1f)
                 p.yaw += 720f * k * k; p.y = sin(PI.toFloat() * k) * 6f
-                p.nX = -170f; p.nZ = -25f; p.pX = -170f; p.pZ = 25f; p.thread = 0
+                p.armN = -170f; p.armP = -170f; p.thread = 0
                 if (k > 0.5f) pendingSkin?.let { skin = it }
             }
         }
-        if (talking) { p.hRoll += sin(g * 9f) * 3f; p.hPitch += sin(g * 6f) * 2f }
+        // Al hablar solo cambia la cara (como las caras de repuesto de las películas de bloques)
     }
 
     // ------------------------------------------------------------------ dibujo
@@ -303,10 +277,10 @@ class AvatarView(context: Context) : View(context) {
         when (p.thread) {
             1 -> threadLine(canvas, headScreen[0], headScreen[1])
             2 -> threadLine(canvas, feetScreen[0], feetScreen[1])
-            3 -> { val h = if (p.nX < -100) handNScreen else handPScreen; threadLine(canvas, h[0], h[1]) }
+            3 -> threadLine(canvas, handNScreen[0], handNScreen[1])
         }
         if (p.web) {
-            val h = if (facing > 0) handPScreen else handNScreen
+            val h = handNScreen
             val k = (t / 0.3f).coerceIn(0f, 1f)
             val ex = h[0] + (if (facing > 0) 1 else -1) * 70f * k
             line.color = Color.WHITE; line.strokeWidth = 1.1f
@@ -327,7 +301,7 @@ class AvatarView(context: Context) : View(context) {
     /** Mano que sujeta la telaraña/cuerda, en píxeles de esta vista. */
     fun holdPoint(): FloatArray {
         val u = min(width, height) / 100f
-        val h = if (p.nX < -100) handNScreen else handPScreen
+        val h = handNScreen
         return floatArrayOf((width - 100 * u) / 2f + h[0] * u, (height - 100 * u) / 2f + h[1] * u)
     }
 
@@ -348,7 +322,7 @@ class AvatarView(context: Context) : View(context) {
 
         // Piernas
         for (side in intArrayOf(-1, 1)) {
-            val leg = root * Mat.t(side * 3.9f, 12f, 0f) * Mat.rx(if (side < 0) p.lN else p.lP)
+            val leg = root * Mat.t(side * 3.9f, 12f, 0f) * Mat.rx(if (side < 0) p.legN else p.legP)
             r3.model = leg
             r3.part {
                 r3.box(-3.75f, -8.4f, -3.2f, 3.75f, 0f, 3.2f, legC, sideTex = camoTex,
@@ -382,7 +356,7 @@ class AvatarView(context: Context) : View(context) {
         if (soldier) gear(root)
 
         // Cabeza
-        val head = root * Mat.t(0f, 27.6f, 0f) * Mat.ry(p.hYaw) * Mat.rx(p.hPitch) * Mat.rz(p.hRoll) * Mat.t(0f, -27.6f, 0f)
+        val head = root * Mat.ry(p.head)
         r3.model = head
         val skinC = when (skin) { Skin.SOLDADO -> yellow; Skin.ARANA_ROJA -> spRed; Skin.ARANA_NEGRA -> black }
         r3.part {
@@ -394,7 +368,7 @@ class AvatarView(context: Context) : View(context) {
             r3.cylinder(4.9f, 4.3f, 38.6f, 39.4f, 16, skinC)
         }
         headScreen = r3.screen(head, 0f, 41f, 0f)
-        if (!(soldier && outfit.head != Headgear.NINGUNO)) r3.part { r3.cylinder(2.9f, 2.9f, 39.3f, 41f, 14, skinC) }
+        if (!(soldier && outfit.head != Headgear.NINGUNO)) stud(head, skinC)
         if (soldier) headgear(head)
         if (p.binoc) r3.part {
             r3.model = head
@@ -426,12 +400,21 @@ class AvatarView(context: Context) : View(context) {
 
     private var handPosN = floatArrayOf(0f, 0f, 0f)
 
+    /** Botón hueco de la cabeza: 4,8 mm de diámetro y 1,7 de alto, como el original. */
+    private fun stud(head: Mat, c: Int) {
+        r3.model = head
+        r3.part {
+            r3.cylinder(2.4f, 2.4f, 39.3f, 41.0f, 14, c)
+            r3.cylinder(1.6f, 1.6f, 41.0f, 41.05f, 12, Renderer.darker(c, 0.6f))
+        }
+    }
+
     private fun arm(root: Mat, side: Int, armC: Int, handC: Int, tex: ((Int) -> Tex?)?) {
         val n = side < 0
-        val sh = root * Mat.t(side * 7.0f, 25.6f, 0f) *
-            Mat.ry(if (n) p.nY else p.pY) * Mat.rz(if (n) p.nZ else p.pZ) * Mat.rx(if (n) p.nX else p.pX)
-        val low = sh * Mat.t(0f, -5.2f, 0f) * Mat.rx(if (n) p.nE else p.pE)
-        val hand = low * Mat.t(0f, -5.6f, 0f)
+        // Gira solo en el pasador del hombro (eje x); la leve apertura y el codo son parte de la pieza
+        val sh = root * Mat.t(side * 7.0f, 25.6f, 0f) * Mat.rx(if (n) p.armN else p.armP) * Mat.rz(side * 6f)
+        val low = sh * Mat.t(0f, -5.2f, 0f) * Mat.rx(-30f)
+        val hand = low * Mat.t(0f, -5.6f, 0f) * Mat.ry(if (n) p.handN else p.handP)
         r3.model = sh
         r3.part {
             r3.dome(2.15f, 2.15f, 0f, armC, lat = 3, lon = 10, full = true)
@@ -524,7 +507,7 @@ class AvatarView(context: Context) : View(context) {
                 r3.part { r3.cylinder(5.3f, 5.3f, 36.8f, 38.1f, 16, gc, caps = false, sideTex = { i -> camoTex(i) }) }
                 r3.part { r3.box(-3.6f, 36.7f, 4.2f, 3.6f, 37.3f, 9.0f, Renderer.darker(gc, 0.85f)) }
             }
-            Headgear.NINGUNO -> r3.part { r3.cylinder(2.9f, 2.9f, 39.3f, 41f, 14, yellow) }
+            Headgear.NINGUNO -> stud(head, yellow)
         }
     }
 
