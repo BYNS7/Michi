@@ -33,7 +33,7 @@ jobs:
           EOT
           gradle copyDeps -q
           mkdir jars
-          for f in out/androidx*; do
+          for f in out/*; do
             case "$f" in
               *.aar) unzip -p "$f" classes.jar > "jars/$(basename "$f" .aar).jar" ;;
               *) cp "$f" jars/ ;;
