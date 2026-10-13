@@ -151,6 +151,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
                 if (::avatar.isInitialized) {
                     val sk = savedSkin()
                     if (sk != avatar.skin) { avatar.transformTo(sk); applyVoice(sk) }
+                    avatar.outfit = savedOutfit()
                 }
                 if (prefs.getBoolean("wake", false)) scheduleWake(1500) else stopWake()
             }
@@ -232,7 +233,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private fun buildBubble() {
         val isTablet = resources.configuration.smallestScreenWidthDp >= 600
         bubbleSize = dp(if (isTablet) 130 else 96)
-        avatar = AvatarView(this).apply { contentDescription = "BYNS, asistente"; setSkinNow(savedSkin()) }
+        avatar = AvatarView(this).apply { contentDescription = "BYNS, asistente"; setSkinNow(savedSkin()); outfit = savedOutfit() }
         bubbleParams = overlayParams(
             bubbleSize, bubbleSize,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -432,7 +433,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
         // Atajos
         val chips = LinearLayout(this)
-        listOf("Transfórmate", "Saca el fusil", "Columpiate", "Baila", "Voltereta", "¿Qué hora es?", "Temporizador de 5 minutos", "Abre YouTube", "Cuéntame un chiste")
+        listOf("Transfórmate", "Columpiate", "Cuélgate de cabeza", "Saca la AK", "Rodilla en tierra", "Cuerpo a tierra", "Lagartijas", "Binoculares", "Ponte la boina", "Visión nocturna", "Camuflaje del desierto", "Baila", "¿Qué hora es?", "Abre YouTube")
             .forEach { q ->
                 chips.addView(Button(this).apply {
                     text = q; isAllCaps = false; textSize = 14f; setTextColor(ink)
@@ -531,19 +532,143 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private fun send(text: String) {
         if (text.isBlank()) return
         addMsg(true, text.trim())
-        avatar.play(AvatarView.Move.THINK, 500)
+        // El soldado se lleva la mano a la frente al recibir una orden
+        val soldier = avatar.skin == AvatarView.Skin.SOLDADO
+        avatar.play(if (soldier) AvatarView.Move.SALUTE else AvatarView.Move.THINK, if (soldier) 900 else 500)
         main.postDelayed({
             val r = brain.handle(text)
             if (r != null) apply(r) else askClaude(text)
-        }, 350)
+        }, if (soldier) 850 else 350)
     }
 
     private fun apply(r: Reply) {
         avatar.facing = if (onLeft()) 1 else -1   // apunta/dispara hacia el centro de la pantalla
-        if (r.skin != null) {
+        r.gear?.let { g -> val o = g(avatar.outfit); avatar.outfit = o; saveOutfit(o) }
+        val act = {
+            when (r.move) {
+                AvatarView.Move.SWING_TRAVEL -> swingAcross()
+                AvatarView.Move.HANG -> hangFromTop(r.moveMs)
+                AvatarView.Move.IDLE -> {}
+                else -> avatar.play(r.move, r.moveMs)
+            }
+            if (r.text.isNotEmpty()) say(r.text)
+        }
+        if (r.skin != null && r.skin != avatar.skin) {
             changeSkin(r.skin, announce = false)
-            main.postDelayed({ say(r.text) }, 700)
-        } else say(r.text, r.move, r.moveMs)
+            main.postDelayed(act, 1250)
+        } else act()
+    }
+
+    private fun savedOutfit(): AvatarView.Outfit = try {
+        AvatarView.Outfit(
+            AvatarView.Headgear.valueOf(prefs.getString("o_head", "CASCO")!!),
+            AvatarView.Camo.valueOf(prefs.getString("o_camo", "MULTICAM")!!),
+            AvatarView.Eyewear.valueOf(prefs.getString("o_eyes", "LENTES")!!),
+            prefs.getBoolean("o_pack", true),
+            AvatarView.Weapon.valueOf(prefs.getString("o_weapon", "FUSIL")!!)
+        )
+    } catch (_: Exception) { AvatarView.Outfit() }
+
+    private fun saveOutfit(o: AvatarView.Outfit) {
+        prefs.edit().putString("o_head", o.head.name).putString("o_camo", o.camo.name).putString("o_eyes", o.eyes.name)
+            .putBoolean("o_pack", o.mochila).putString("o_weapon", o.weapon.name).apply()
+    }
+
+    // ---------------------------------------------------------------- columpio por la pantalla
+
+    private var swinging = false
+
+    /**
+     * Cruza la pantalla colgado de una telaraña (o cuerda, de soldado) enganchada en el borde de arriba:
+     * describe un arco de péndulo desde su borde hasta el borde contrario.
+     */
+    private fun swingAcross() {
+        if (swinging) return
+        swinging = true
+        closePanel(); hideTalk.run()
+        val rope = avatar.skin == AvatarView.Skin.SOLDADO
+        val web = WebLine(this, if (rope) Color.parseColor("#7A6040") else Color.WHITE, dp(if (rope) 3 else 2).toFloat())
+        val lp = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        ).apply { alpha = 0.8f }
+        wm.addView(web, lp)
+        wm.removeView(avatar); wm.addView(avatar, bubbleParams)
+
+        val s = bubbleSize.toFloat()
+        val grip = { avatar.holdPoint() }  // mano que sujeta, en píxeles de la vista
+        val ax = screenW / 2f; val ay = 0f
+        val g0 = grip()
+        val sx0 = bubbleParams.x + g0[0]; val sy0 = bubbleParams.y + g0[1]
+        val radius = kotlin.math.hypot(sx0 - ax, sy0 - ay).coerceAtLeast(screenH * 0.3f)
+        val th0 = kotlin.math.atan2(sx0 - ax, sy0 - ay)
+        val th1 = -th0
+        avatar.facing = if (th1 > th0) 1 else -1
+        avatar.play(AvatarView.Move.SWING_TRAVEL, 2600)
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 2200
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            addUpdateListener {
+                val k = it.animatedValue as Float
+                val th = th0 + (th1 - th0) * k
+                val gx = ax + radius * kotlin.math.sin(th); val gy = ay + radius * kotlin.math.cos(th)
+                val deg = Math.toDegrees(-th.toDouble()).toFloat()
+                avatar.rotation = deg
+                // Posición de la ventana para que la mano (girada con la vista) quede en el punto del arco
+                val h = grip()
+                val cx = s / 2f; val cy = s / 2f
+                val r = Math.toRadians(deg.toDouble())
+                val hx = cx + ((h[0] - cx) * kotlin.math.cos(r) - (h[1] - cy) * kotlin.math.sin(r)).toFloat()
+                val hy = cy + ((h[0] - cx) * kotlin.math.sin(r) + (h[1] - cy) * kotlin.math.cos(r)).toFloat()
+                bubbleParams.x = (gx - hx).toInt(); bubbleParams.y = (gy - hy).toInt()
+                try { wm.updateViewLayout(avatar, bubbleParams) } catch (_: Exception) {}
+                web.set(ax, ay, gx, gy)
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    try { wm.removeView(web) } catch (_: Exception) {}
+                    avatar.rotation = 0f
+                    swinging = false
+                    snapToEdge(animate = true)
+                    avatar.play(AvatarView.Move.PARTY, 900)
+                }
+            })
+            start()
+        }
+    }
+
+    /** Baja hasta el borde de arriba y se cuelga de cabeza del hilo. */
+    private fun hangFromTop(ms: Long) {
+        val from = bubbleParams.y
+        val to = -(bubbleSize * 0.08f).toInt()
+        avatar.play(AvatarView.Move.HANG, ms + 800)
+        ValueAnimator.ofInt(from, to).apply {
+            duration = 600
+            addUpdateListener {
+                bubbleParams.y = it.animatedValue as Int
+                try { wm.updateViewLayout(avatar, bubbleParams) } catch (_: Exception) {}
+            }
+            start()
+        }
+        main.postDelayed({
+            ValueAnimator.ofInt(bubbleParams.y, from).apply {
+                duration = 600
+                addUpdateListener {
+                    bubbleParams.y = it.animatedValue as Int
+                    try { wm.updateViewLayout(avatar, bubbleParams) } catch (_: Exception) {}
+                }
+                start()
+            }
+        }, ms + 600)
+    }
+
+    /** Línea de telaraña/cuerda a pantalla completa (no recibe toques). */
+    private class WebLine(ctx: Context, color: Int, width: Float) : View(ctx) {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color; strokeWidth = width; strokeCap = android.graphics.Paint.Cap.ROUND
+        }
+        private var x0 = 0f; private var y0 = 0f; private var x1 = 0f; private var y1 = 0f
+        fun set(ax: Float, ay: Float, bx: Float, by: Float) { x0 = ax; y0 = ay; x1 = bx; y1 = by; invalidate() }
+        override fun onDraw(c: android.graphics.Canvas) { c.drawLine(x0, y0, x1, y1, paint) }
     }
 
     private fun savedSkin(): AvatarView.Skin =
@@ -565,11 +690,23 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         val skin = avatar.skin
         avatar.play(AvatarView.Move.THINK)
         showTalk("Buscando con Claude…", 20000)
+        var acted = false
         executor.execute {
-            val answer = c.ask(text, skin)
+            val answer = c.ask(text, skin) { tipo, valor ->
+                // Claude pide una acción: se ejecuta en el hilo principal
+                val r = java.util.concurrent.FutureTask { brain.action(tipo, valor) }
+                main.post(r)
+                val reply = try { r.get(3, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) { null }
+                if (reply == null) "No pude hacer eso: «$valor» no existe."
+                else {
+                    acted = true
+                    main.postDelayed({ apply(reply.copy(text = "")) }, 0)
+                    "Hecho: $tipo $valor"
+                }
+            }
             main.post {
-                avatar.play(AvatarView.Move.IDLE)
-                say(answer, AvatarView.Move.WAVE, 1500)
+                if (!acted) avatar.play(AvatarView.Move.IDLE)
+                say(answer, if (acted) AvatarView.Move.IDLE else AvatarView.Move.WAVE, 1500)
             }
         }
     }
@@ -658,6 +795,11 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            // Más paciente: espera más antes de dar la frase por terminada
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
         listening = true; paintMic()
         avatar.play(AvatarView.Move.LISTEN)
         showTalk("Te escucho…", 6000)
@@ -671,7 +813,10 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
     }
 
     private fun scheduleWake(ms: Long) {
@@ -697,8 +842,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     private fun onWakeResults(all: List<String>) {
         listenMode = Listen.NONE
         for (raw in all) {
-            val m = wakeRegex.find(Brain.norm(raw)) ?: continue
-            val cmd = m.groupValues[1].trim()
+            val cmd = wakeCommand(Brain.norm(raw)) ?: continue
             vibrate(25)
             if (cmd.isNotEmpty()) {
                 // «Oye BYNS, abre YouTube»: usa las últimas palabras originales (con tildes)
@@ -712,6 +856,35 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         }
         scheduleWake(150)
     }
+
+    /**
+     * Busca «Oye BYNS» tolerando cómo lo transcriba el reconocedor («bins», «vince», «beins»…).
+     * Devuelve lo que se dijo después (vacío si solo dijo el nombre) o null si no lo llamaron.
+     */
+    private fun wakeCommand(t: String): String? {
+        wakeRegex.find(t)?.let { return it.groupValues[1].trim() }
+        val words = t.split(" ").filter { it.isNotBlank() }
+        for ((i, w) in words.withIndex()) {
+            val afterCall = i > 0 && words[i - 1] in setOf("oye", "hey", "ey", "oie", "ok", "okey", "hola")
+            val near = listOf("byns", "bins", "bains", "beins", "vins", "binz").minOf { lev(w, it) }
+            val first = w.firstOrNull() in setOf('b', 'v', 'p', 'w')
+            if ((near <= 1 && first && w.length in 3..6) || (afterCall && near <= 2 && first)) {
+                return words.drop(i + 1).joinToString(" ")
+            }
+        }
+        return null
+    }
+
+    private fun lev(a: String, b: String): Int {
+        val d = Array(a.length + 1) { IntArray(b.length + 1) }
+        for (i in 0..a.length) d[i][0] = i
+        for (j in 0..b.length) d[0][j] = j
+        for (i in 1..a.length) for (j in 1..b.length)
+            d[i][j] = minOf(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1)
+        return d[a.length][b.length]
+    }
+
+    private var retried = false
 
     private fun stopListening() { try { recognizer?.stopListening() } catch (_: Exception) {}; endListening() }
 
@@ -734,7 +907,11 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         override fun onEndOfSpeech() {}
         override fun onEvent(eventType: Int, params: Bundle?) {}
         override fun onPartialResults(partial: Bundle?) {
-            if (listenMode == Listen.WAKE) return
+            if (listenMode == Listen.WAKE) {
+                val heard = partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
+                if (wakeCommand(Brain.norm(heard)) != null) avatar.play(AvatarView.Move.LISTEN, 3000)
+                return
+            }
             val s = partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
             if (!s.isNullOrBlank()) showTalk("«$s…»", 4000)
         }
@@ -745,6 +922,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             }
             listenMode = Listen.NONE
             endListening()
+            retried = false
             val s = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
             if (s.isNullOrBlank()) say("No te entendí bien. ¿Lo repites?", AvatarView.Move.THINK) else send(s)
         }
@@ -760,6 +938,13 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             }
             listenMode = Listen.NONE
             endListening()
+            if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && !retried) {
+                // Segundo intento sin quejarse: a veces el primer arranque no capta la voz
+                retried = true
+                main.postDelayed({ startListening() }, 250)
+                return
+            }
+            retried = false
             val msg = when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No te escuché. Mantenme pulsado y vuelve a hablar."
                 SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Necesito internet para entender la voz."

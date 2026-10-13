@@ -47,7 +47,7 @@ class MainActivity : Activity() {
 
         val prefs = getSharedPreferences("michi", MODE_PRIVATE)
         val savedSkin = try { AvatarView.Skin.valueOf(prefs.getString("skin", "SOLDADO")!!) } catch (_: Exception) { AvatarView.Skin.SOLDADO }
-        preview = AvatarView(this).apply { setSkinNow(savedSkin); play(AvatarView.Move.WAVE, 3000) }
+        preview = AvatarView(this).apply { setSkinNow(savedSkin); outfit = loadOutfit(); play(AvatarView.Move.SALUTE, 3000) }
         col.addView(preview, LinearLayout.LayoutParams(dp(240), dp(240)))
         col.addView(TextView(this).apply {
             text = "BYNS"; textSize = 38f; setTextColor(red); gravity = Gravity.CENTER
@@ -89,6 +89,29 @@ class MainActivity : Activity() {
         }
         col.addView(skins, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
+        // Equipo del soldado: cada botón pasa a la siguiente opción
+        col.addView(section("Equipo del soldado"))
+        val gear = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun gearButton(label: () -> String, next: (AvatarView.Outfit) -> AvatarView.Outfit, show: AvatarView.Move) {
+            val b = button(label(), Color.parseColor("#5C6A3A")) {}
+            b.setOnClickListener {
+                val o = next(preview.outfit)
+                preview.outfit = o; saveOutfit(o)
+                if (preview.skin != AvatarView.Skin.SOLDADO) { prefs.edit().putString("skin", "SOLDADO").apply(); preview.transformTo(AvatarView.Skin.SOLDADO) }
+                else preview.play(show, 2500)
+                b.text = label()
+                if (OverlayService.running) startMichi()
+            }
+            gear.addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50)).apply { topMargin = dp(6) })
+        }
+        fun <T : Enum<T>> nextOf(v: T, all: Array<T>) = all[(v.ordinal + 1) % all.size]
+        gearButton({ "Cabeza: " + preview.outfit.head.label }, { it.copy(head = nextOf(it.head, AvatarView.Headgear.values())) }, AvatarView.Move.LOOK)
+        gearButton({ "Camuflaje: " + preview.outfit.camo.label }, { it.copy(camo = nextOf(it.camo, AvatarView.Camo.values())) }, AvatarView.Move.FLEX)
+        gearButton({ "Arma: " + preview.outfit.weapon.label }, { it.copy(weapon = nextOf(it.weapon, AvatarView.Weapon.values())) }, AvatarView.Move.AIM)
+        gearButton({ "Ojos: " + preview.outfit.eyes.label }, { it.copy(eyes = nextOf(it.eyes, AvatarView.Eyewear.values())) }, AvatarView.Move.SALUTE)
+        gearButton({ "Mochila: " + (if (preview.outfit.mochila) "sí" else "no") }, { it.copy(mochila = !it.mochila) }, AvatarView.Move.MARCH)
+        col.addView(gear, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
         // Voz y «Oye BYNS»
         col.addView(section("Voz"))
         col.addView(Switch(this).apply {
@@ -122,6 +145,16 @@ class MainActivity : Activity() {
             prefs.edit().putString("claude_key", keyField.text.toString().trim()).apply()
             status.text = if (keyField.text.isBlank()) "Clave borrada." else "Clave guardada. ¡Pregúntale lo que quieras a BYNS!"
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(6) })
+        col.addView(button("Probar conexión con Claude", Color.parseColor("#5D6788")) {
+            val key = keyField.text.toString().trim()
+            if (key.isEmpty()) { status.text = "Primero pega tu clave."; return@button }
+            prefs.edit().putString("claude_key", key).apply()
+            status.text = "Probando conexión con Claude…"
+            Thread {
+                val err = ClaudeClient(key).test()
+                main.post { status.text = err ?: "✓ ¡Conectado con Claude! BYNS ya puede responder cualquier pregunta." }
+            }.start()
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(6) })
 
         status = TextView(this).apply { textSize = 15f; setTextColor(Color.parseColor("#5D6788")); gravity = Gravity.CENTER; setPadding(0, dp(16), 0, 0) }
         col.addView(status)
@@ -131,7 +164,10 @@ class MainActivity : Activity() {
             setPadding(0, dp(20), 0, 0)
             text = "Puedes decirle o escribirle:\n" +
                 "• Oye BYNS, transfórmate / ponte el traje negro / modo soldado\n" +
-                "• Saca el fusil / Saludo militar / Baila / Voltereta / Columpiate / Lanza una telaraña\n" +
+                "• Saca la AK / Francotirador / Pistola / Rodilla en tierra / Cuerpo a tierra / Lagartijas\n" +
+                "• Saludo militar / Firmes / Marcha / Corre / Binoculares / Radio / Músculos / Mira alrededor\n" +
+                "• Ponte la boina / la gorra / visión nocturna / gafas tácticas / camuflaje del desierto, bosque, digital o negro\n" +
+                "• Columpiate (cruza la pantalla) / Cuélgate de cabeza / Baila / Voltereta / Lanza una telaraña\n" +
                 "• ¿Quién ganó el último partido de Bolivia? (lo busca con Claude)\n" +
                 "• ¿Qué hora es? / ¿Qué día es hoy?\n" +
                 "• Temporizador de 10 minutos\n" +
@@ -151,6 +187,24 @@ class MainActivity : Activity() {
     }
 
     private lateinit var preview: AvatarView
+
+    private fun loadOutfit(): AvatarView.Outfit {
+        val prefs = getSharedPreferences("michi", MODE_PRIVATE)
+        return try {
+            AvatarView.Outfit(
+                AvatarView.Headgear.valueOf(prefs.getString("o_head", "CASCO")!!),
+                AvatarView.Camo.valueOf(prefs.getString("o_camo", "MULTICAM")!!),
+                AvatarView.Eyewear.valueOf(prefs.getString("o_eyes", "LENTES")!!),
+                prefs.getBoolean("o_pack", true),
+                AvatarView.Weapon.valueOf(prefs.getString("o_weapon", "FUSIL")!!)
+            )
+        } catch (_: Exception) { AvatarView.Outfit() }
+    }
+
+    private fun saveOutfit(o: AvatarView.Outfit) {
+        getSharedPreferences("michi", MODE_PRIVATE).edit().putString("o_head", o.head.name).putString("o_camo", o.camo.name)
+            .putString("o_eyes", o.eyes.name).putBoolean("o_pack", o.mochila).putString("o_weapon", o.weapon.name).apply()
+    }
 
     private fun section(title: String) = TextView(this).apply {
         text = title; textSize = 18f; setTextColor(ink)

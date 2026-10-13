@@ -23,14 +23,12 @@ class AvatarRenderTest {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
         val cell = 300
         val shots = listOf(
-            AvatarView.Skin.SOLDADO to AvatarView.Move.IDLE, AvatarView.Skin.SOLDADO to AvatarView.Move.AIM,
-            AvatarView.Skin.SOLDADO to AvatarView.Move.SALUTE, AvatarView.Skin.SOLDADO to AvatarView.Move.WALK,
-            AvatarView.Skin.ARANA_ROJA to AvatarView.Move.IDLE, AvatarView.Skin.ARANA_ROJA to AvatarView.Move.SWING,
-            AvatarView.Skin.ARANA_ROJA to AvatarView.Move.WEB, AvatarView.Skin.ARANA_ROJA to AvatarView.Move.PARTY,
-            AvatarView.Skin.ARANA_NEGRA to AvatarView.Move.IDLE, AvatarView.Skin.ARANA_NEGRA to AvatarView.Move.WAVE,
-            AvatarView.Skin.ARANA_NEGRA to AvatarView.Move.DANCE, AvatarView.Skin.ARANA_NEGRA to AvatarView.Move.TRANSFORM,
+            AvatarView.Skin.SOLDADO to AvatarView.Move.IDLE, AvatarView.Skin.SOLDADO to AvatarView.Move.SALUTE, AvatarView.Skin.SOLDADO to AvatarView.Move.AIM, AvatarView.Skin.SOLDADO to AvatarView.Move.KNEEL_AIM,
+            AvatarView.Skin.SOLDADO to AvatarView.Move.PRONE, AvatarView.Skin.SOLDADO to AvatarView.Move.PUSHUPS, AvatarView.Skin.SOLDADO to AvatarView.Move.BINOCULARS, AvatarView.Skin.SOLDADO to AvatarView.Move.MARCH,
+            AvatarView.Skin.ARANA_ROJA to AvatarView.Move.IDLE, AvatarView.Skin.ARANA_ROJA to AvatarView.Move.SWING_TRAVEL, AvatarView.Skin.ARANA_ROJA to AvatarView.Move.HANG, AvatarView.Skin.ARANA_ROJA to AvatarView.Move.WEB,
+            AvatarView.Skin.ARANA_NEGRA to AvatarView.Move.IDLE, AvatarView.Skin.ARANA_NEGRA to AvatarView.Move.FLEX, AvatarView.Skin.ARANA_NEGRA to AvatarView.Move.DANCE, AvatarView.Skin.ARANA_NEGRA to AvatarView.Move.TRANSFORM,
         )
-        val out = Bitmap.createBitmap(cell * 4, cell * 3, Bitmap.Config.ARGB_8888)
+        val out = Bitmap.createBitmap(cell * 4, cell * 4, Bitmap.Config.ARGB_8888)
         val oc = Canvas(out); oc.drawColor(Color.parseColor("#CFE6F5"))
         shots.forEachIndexed { i, (skin, move) ->
             val v = AvatarView(ctx)

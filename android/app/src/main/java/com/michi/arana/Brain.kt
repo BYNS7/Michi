@@ -5,6 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.BatteryManager
+import com.michi.arana.AvatarView.Camo as C
+import com.michi.arana.AvatarView.Eyewear as E
+import com.michi.arana.AvatarView.Headgear as H
+import com.michi.arana.AvatarView.Move as M
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
@@ -54,7 +58,9 @@ data class Reply(
     val text: String,
     val move: AvatarView.Move = AvatarView.Move.IDLE,
     val moveMs: Long = 2500,
-    val skin: AvatarView.Skin? = null
+    val skin: AvatarView.Skin? = null,
+    /** Cambio de equipo del soldado (casco, camuflaje, arma…). */
+    val gear: ((AvatarView.Outfit) -> AvatarView.Outfit)? = null
 )
 
 /**
@@ -166,7 +172,7 @@ class Brain(private val ctx: Context, private val avisos: Avisos, private val sk
 
     private fun traje(t: String): Reply? {
         val wants = Regex("\\b(cambia|cambiate|transforma|transformate|convierte|conviertete|ponte|pon|traje|modo|vuelve|usa)\\b").containsMatchIn(t)
-        if (!wants) return null
+        if (!wants || Regex("camuflaje|uniforme|boina|gorra|casco|mochila|lentes|gafas").containsMatchIn(t)) return null
         val target = when {
             Regex("\\b(soldado|militar|ejercito|camuflaje|comando)\\b").containsMatchIn(t) -> AvatarView.Skin.SOLDADO
             Regex("\\b(negro|negra|miles|morales|oscuro)\\b").containsMatchIn(t) -> AvatarView.Skin.ARANA_NEGRA
@@ -186,22 +192,128 @@ class Brain(private val ctx: Context, private val avisos: Avisos, private val sk
 
     private fun movimiento(t: String): Reply? {
         val soldier = skin() == AvatarView.Skin.SOLDADO
+        armaDe(t)?.let { w ->
+            if (Regex("saca|usa|apunta|dispara|cambia|ponte|toma|agarra|arma|dame|muestra").containsMatchIn(t) || t.split(" ").size <= 3) {
+                return Reply("¡${w.label.replaceFirstChar { it.uppercase() }} listo! En posición de tiro.", M.AIM, 6000,
+                    skin = if (soldier) null else AvatarView.Skin.SOLDADO, gear = { it.copy(weapon = w) })
+            }
+        }
         return when {
-            Regex("fusil|rifle|apunta|posicion de (disparo|tiro)|dispara|saca (el|tu) arma|en guardia").containsMatchIn(t) ->
-                if (soldier) Reply("¡Fusil listo! En posición de tiro.", AvatarView.Move.AIM, 6000)
-                else Reply("Mis únicas armas son las telarañas. ¡Fiu!", AvatarView.Move.WEB, 2500)
-            Regex("saludo militar|firmes|saluda").containsMatchIn(t) ->
-                if (soldier) Reply("¡A la orden, mi comandante!", AvatarView.Move.SALUTE, 3000) else Reply("¡Hola, hola!", AvatarView.Move.WAVE)
-            Regex("\\bbaila|bailar|bailecito").containsMatchIn(t) -> Reply("¡Mira estos pasos!", AvatarView.Move.DANCE, 5000)
-            Regex("voltereta|mortal|pirueta|flip").containsMatchIn(t) -> Reply("¡Hop!", AvatarView.Move.FLIP, 900)
-            Regex("\\bsalta|saltar|brinca").containsMatchIn(t) -> Reply("¡Boing, boing!", AvatarView.Move.PARTY, 2500)
-            Regex("\\bcamina|marcha|\\bpasea").containsMatchIn(t) -> Reply(if (soldier) "¡Un, dos, un, dos!" else "Dando un paseo por el barrio.", AvatarView.Move.WALK, 4000)
-            Regex("columpia|balancea|cuelga").containsMatchIn(t) ->
-                if (soldier) Reply("Para columpiarme necesito un traje arácnido. Dime «transfórmate».", AvatarView.Move.THINK)
-                else Reply("¡Wiii! Columpiándome por la ciudad.", AvatarView.Move.SWING, 5000)
+            Regex("rodilla en tierra|arrodillate|de rodillas|rodilla").containsMatchIn(t) ->
+                if (soldier) Reply("¡Rodilla en tierra!", M.KNEEL_AIM, 6000) else Reply("Agachado y alerta.", M.CROUCH, 4000)
+            Regex("fusil|rifle|apunta|posicion de (disparo|tiro)|dispara|saca (el|tu|la) arma|en guardia").containsMatchIn(t) ->
+                if (soldier) Reply("¡Arma lista! En posición de tiro.", M.AIM, 6000)
+                else Reply("Mis únicas armas son las telarañas. ¡Fiu!", M.WEB, 2500)
+            Regex("cuerpo a tierra|pecho a tierra|al suelo|echate|tumbate|acuestate").containsMatchIn(t) -> Reply("¡Cuerpo a tierra!", M.PRONE, 6000)
+            Regex("lagartijas|flexiones|planchas|ejercicio").containsMatchIn(t) -> Reply("¡Uno, dos, tres! Lagartijas.", M.PUSHUPS, 6000)
+            Regex("\\bfirmes\\b|atencion").containsMatchIn(t) -> Reply("¡Firmes!", M.ATTENTION, 3000)
+            Regex("saludo militar|\\bsaluda").containsMatchIn(t) ->
+                if (soldier) Reply("¡A la orden, mi comandante!", M.SALUTE, 3000) else Reply("¡Hola, hola!", M.WAVE)
+            Regex("binocular|prismatico|vigila|explora|reconocimiento").containsMatchIn(t) -> Reply("Vigilando la zona…", M.BINOCULARS, 6000)
+            Regex("\\bradio\\b|reporta|comunicate").containsMatchIn(t) -> Reply("Base, aquí BYNS. Todo en orden, cambio.", M.RADIO, 5000)
+            Regex("musculo|fuerza|presume|fuerte").containsMatchIn(t) -> Reply("¡Mira estos músculos de plástico!", M.FLEX, 4000)
+            Regex("mira alrededor|mira a los lados|otea|busca alrededor").containsMatchIn(t) -> Reply("Revisando el perímetro.", M.LOOK, 5000)
+            Regex("agachate|cuclillas|agachado|escondete").containsMatchIn(t) -> Reply("Agachado y en silencio.", M.CROUCH, 5000)
+            Regex("sientate|sentado|descansa").containsMatchIn(t) -> Reply("Un descansito.", M.SIT, 6000)
+            Regex("\\bbaila|bailar|bailecito").containsMatchIn(t) -> Reply("¡Mira estos pasos!", M.DANCE, 5000)
+            Regex("voltereta|mortal|pirueta|flip").containsMatchIn(t) -> Reply("¡Hop!", M.FLIP, 900)
+            Regex("\\bsalta|saltar|brinca").containsMatchIn(t) -> Reply("¡Boing, boing!", M.PARTY, 2500)
+            Regex("\\bcorre|correr|trota").containsMatchIn(t) -> Reply("¡A toda velocidad!", M.RUN, 4000)
+            Regex("\\bmarcha|marchar").containsMatchIn(t) -> Reply("¡Un, dos, un, dos!", M.MARCH, 5000)
+            Regex("\\bcamina|\\bpasea").containsMatchIn(t) -> Reply("Dando un paseo.", M.WALK, 4000)
+            Regex("de cabeza|boca abajo|cabeza abajo|cuelgate").containsMatchIn(t) ->
+                Reply(if (soldier) "¡Colgado de la cuerda, cabeza abajo!" else "¡El mundo se ve mejor al revés!", M.HANG, 7000)
+            Regex("columpia|balancea|cruza la pantalla|vuela").containsMatchIn(t) ->
+                Reply(if (soldier) "¡Allá voy con la cuerda!" else "¡Wiii! Allá voy.", M.SWING_TRAVEL, 2600)
             Regex("telarana|lanza (una )?red").containsMatchIn(t) ->
-                if (soldier) Reply("Sin traje arácnido no tengo telarañas.", AvatarView.Move.THINK)
-                else Reply("¡Fiu! Telaraña lanzada.", AvatarView.Move.WEB, 2500)
+                if (soldier) Reply("Sin traje arácnido no tengo telarañas.", M.THINK)
+                else Reply("¡Fiu! Telaraña lanzada.", M.WEB, 2500)
+            else -> equipo(t)
+        }
+    }
+
+    private fun armaDe(t: String): AvatarView.Weapon? = when {
+        Regex("\\bak\\b|ak ?47|\\baka\\b|kalashnikov|cuerno de chivo").containsMatchIn(t) -> AvatarView.Weapon.AK
+        Regex("francotirador|sniper|rifle de precision").containsMatchIn(t) -> AvatarView.Weapon.FRANCOTIRADOR
+        Regex("pistola").containsMatchIn(t) -> AvatarView.Weapon.PISTOLA
+        Regex("\\bm ?4\\b|carabina").containsMatchIn(t) -> AvatarView.Weapon.FUSIL
+        else -> null
+    }
+
+    /** Casco, boina, gorra, camuflaje, lentes y mochila del soldado. */
+    private fun equipo(t: String): Reply? {
+        val quita = Regex("quita|saca|sin\\b").containsMatchIn(t)
+        val change: Pair<String, (AvatarView.Outfit) -> AvatarView.Outfit> = when {
+            Regex("vision nocturna|visor nocturno|nocturna").containsMatchIn(t) -> "Visión nocturna activada." to { o -> o.copy(head = H.CASCO_NVG) }
+            Regex("boina").containsMatchIn(t) -> (if (quita) "Boina guardada." else "¡Boina puesta!") to { o -> o.copy(head = if (quita) H.NINGUNO else H.BOINA) }
+            Regex("gorra").containsMatchIn(t) -> (if (quita) "Gorra fuera." else "Gorra puesta.") to { o -> o.copy(head = if (quita) H.NINGUNO else H.GORRA) }
+            Regex("casco").containsMatchIn(t) -> (if (quita) "Casco fuera." else "Casco puesto.") to { o -> o.copy(head = if (quita) H.NINGUNO else H.CASCO) }
+            Regex("mochila").containsMatchIn(t) -> (if (quita) "Mochila fuera." else "Mochila lista.") to { o -> o.copy(mochila = !quita) }
+            Regex("gafas|lentes de sol|lentes tacticos").containsMatchIn(t) && !quita -> "Gafas tácticas puestas." to { o -> o.copy(eyes = E.GAFAS) }
+            Regex("lentes|anteojos|gafas").containsMatchIn(t) -> (if (quita) "Sin lentes." else "Lentes puestos.") to { o -> o.copy(eyes = if (quita) E.NINGUNO else E.LENTES) }
+            Regex("camuflaje|uniforme").containsMatchIn(t) -> {
+                val c = when {
+                    Regex("desierto|arena|arido").containsMatchIn(t) -> C.DESIERTO
+                    Regex("bosque|selva|verde|woodland").containsMatchIn(t) -> C.BOSQUE
+                    Regex("digital|pixel").containsMatchIn(t) -> C.DIGITAL
+                    Regex("negro|nocturno|tactico").containsMatchIn(t) -> C.NEGRO
+                    Regex("multicam|normal|original").containsMatchIn(t) -> C.MULTICAM
+                    else -> null
+                }
+                if (c == null) "Tengo camuflaje multicam, desierto, bosque, digital y negro. ¿Cuál quieres?" to { o -> o }
+                else "Camuflaje ${c.label} puesto." to { o -> o.copy(camo = c) }
+            }
+            else -> return null
+        }
+        return Reply(change.first, AvatarView.Move.FLEX, 1500,
+            skin = if (skin() == AvatarView.Skin.SOLDADO) null else AvatarView.Skin.SOLDADO, gear = change.second)
+    }
+
+    /** Acciones que pide Claude con su herramienta. */
+    fun action(tipo: String, valor: String): Reply? {
+        val v = norm(valor).replace("_", " ")
+        return when (tipo) {
+            "movimiento" -> when (valor.uppercase()) {
+                "SALUDO_MILITAR" -> Reply("", M.SALUTE, 3000)
+                "FIRMES" -> Reply("", M.ATTENTION, 3000)
+                "APUNTAR" -> Reply("", M.AIM, 6000)
+                "RODILLA_EN_TIERRA" -> Reply("", M.KNEEL_AIM, 6000)
+                "MARCHAR" -> Reply("", M.MARCH, 5000)
+                "CAMINAR" -> Reply("", M.WALK, 4000)
+                "CORRER" -> Reply("", M.RUN, 4000)
+                "AGACHARSE" -> Reply("", M.CROUCH, 5000)
+                "SENTARSE" -> Reply("", M.SIT, 6000)
+                "CUERPO_A_TIERRA" -> Reply("", M.PRONE, 6000)
+                "LAGARTIJAS" -> Reply("", M.PUSHUPS, 6000)
+                "BINOCULARES" -> Reply("", M.BINOCULARS, 6000)
+                "RADIO" -> Reply("", M.RADIO, 5000)
+                "MUSCULOS" -> Reply("", M.FLEX, 4000)
+                "MIRAR_ALREDEDOR" -> Reply("", M.LOOK, 5000)
+                "SALUDAR" -> Reply("", M.WAVE, 2500)
+                "SALTAR" -> Reply("", M.PARTY, 2500)
+                "BAILAR" -> Reply("", M.DANCE, 5000)
+                "VOLTERETA" -> Reply("", M.FLIP, 900)
+                "COLUMPIARSE" -> Reply("", M.SWING_TRAVEL, 2600)
+                "COLGARSE_DE_CABEZA" -> Reply("", M.HANG, 7000)
+                "LANZAR_TELARANA" -> Reply("", M.WEB, 2500)
+                "PENSAR" -> Reply("", M.THINK, 2500)
+                else -> movimiento(v)
+            }
+            "traje" -> traje("ponte traje $v")?.copy(text = "")
+            "equipo" -> when (valor.uppercase()) {
+                "SIN_CASCO" -> equipo("quita casco")
+                "CASCO_NVG" -> equipo("vision nocturna")
+                "SIN_LENTES" -> equipo("quita lentes")
+                "SIN_MOCHILA" -> equipo("quita mochila")
+                "GAFAS" -> equipo("gafas tacticas")
+                "MULTICAM", "DESIERTO", "BOSQUE", "DIGITAL", "NEGRO" -> equipo("camuflaje $v")
+                else -> equipo(v)
+            }?.copy(text = "")
+            "arma" -> armaDe(if (valor.uppercase() == "FUSIL") "m4" else v)?.let { w ->
+                Reply("", M.AIM, 6000, skin = if (skin() == AvatarView.Skin.SOLDADO) null else AvatarView.Skin.SOLDADO, gear = { it.copy(weapon = w) })
+            }
+            "abrir_app" -> openApp(v)
+            "temporizador" -> handle("temporizador de ${valor.filter { it.isDigit() || it == '.' }.ifEmpty { "5" }} minutos")
             else -> null
         }
     }
